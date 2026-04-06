@@ -134,7 +134,7 @@ class SSHService {
       throw Exception('未连接到服务器');
     }
 
-    SftpFileHandle? file;
+    SftpFile? file;
     SftpClient? sftp;
 
     try {
@@ -144,8 +144,8 @@ class SSHService {
 
       // 获取文件总大小
       final attrs = await file.stat();
-      final totalSize = attrs?.size ?? 0;
-      debugPrint('📁 文件总大小: ${totalSize ~/ 1024 ~/ 1024} MB');
+      final totalSize = attrs.size ?? 0;
+      debugPrint('📁 文件总大小: ${(totalSize ~/ 1024 ~/ 1024)} MB');
 
       // 打开本地文件
       final localFile = File(localPath);
@@ -156,9 +156,12 @@ class SSHService {
       int downloaded = 0;
       int position = 0;
 
-      while (true) {
+      while (downloaded < totalSize) {
+        final remaining = totalSize - downloaded;
+        final toRead = remaining < chunkSize ? remaining : chunkSize;
+        
         // 读取一块数据
-        final chunk = await file.read(position: position, len: chunkSize);
+        final chunk = await file.readBytes(length: toRead.toInt(), offset: position);
 
         if (chunk.isEmpty) {
           break; // 文件读取完成
@@ -176,7 +179,7 @@ class SSHService {
 
       // 关闭写入器
       await sink.close();
-      file.close();
+      await file.close();
       sftp.close();
 
       debugPrint('✅ 流式下载完成: $localPath');
@@ -184,12 +187,15 @@ class SSHService {
       debugPrint('❌ 流式下载失败: $e');
       // 确保资源被释放
       try {
-        file?.close();
+        await file?.close();
         sftp?.close();
       } catch (_) {}
       rethrow;
     }
   }
+
+  /// 获取 SSH 客户端（用于流式服务）
+  SSHClient? getClient() => _client;
 
   SSHConfig? get currentConfig => _currentConfig;
 }

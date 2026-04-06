@@ -10,11 +10,13 @@ import '../services/database_service.dart';
 import '../services/audio_player_service.dart';
 import '../services/audio_player_base.dart';
 import '../services/timer_service.dart';
+import '../services/streaming_audio_service.dart';
 
 class AppProvider extends ChangeNotifier {
   final SSHService _sshService = SSHService();
   final DatabaseService _databaseService = DatabaseService();
   final AudioPlayerServiceBase _audioPlayerService = createAudioPlayerService();
+  final StreamingAudioService _streamingService = StreamingAudioService();
   final TimerService _timerService = TimerService();
 
   // SSH 状态
@@ -250,60 +252,30 @@ class AppProvider extends ChangeNotifier {
     _isPlaying = true;
   }
 
-  // 大文件：流式下载边下边播
+  // 大文件：真正的流式下载边下边播
   Future<void> _playMediaStreaming(MediaFile file) async {
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final extension = file.name.contains('.') ? file.name.split('.').last : 'mp3';
-    final tempFileName = 'stream_${timestamp}.$extension';
-    final tempDir = await getTemporaryDirectory();
-    final tempFile = File('${tempDir.path}/$tempFileName');
+    debugPrint('🌐 启动 HTTP 流式服务...');
 
-    debugPrint('📁 临时文件: ${tempFile.path}');
-
-    // 先下载 5MB 后开始播放
-    const initialDownloadSize = 5 * 1024 * 1024; // 5MB
-    final fileSize = file.size ?? await _sshService.getFileSize(file.path) ?? 0;
-    final initialChunk = (initialDownloadSize < fileSize) ? initialDownloadSize : fileSize;
-
-    debugPrint('📥 预下载 ${initialChunk ~/ 1024}KB 后开始播放...');
-
-    // 使用 Isolate 或 async 方式边下边播
-    bool downloadComplete = false;
-    Exception? downloadError;
-
-    // 后台下载任务
-    final downloadTask = _sshService.downloadFileStreaming(
-      remotePath: file.path,
-      localPath: tempFile.path,
-      progressCallback: (downloaded, total) {
-        final percent = (downloaded / total * 100).toStringAsFixed(1);
-        debugPrint('📥 下载进度: $percent% (${downloaded ~/ 1024}KB / ${total ~/ 1024}KB)');
-      },
-    ).then((_) {
-      downloadComplete = true;
-      debugPrint('✅ 后台下载完成');
-    }).catchError((e) {
-      downloadError = e;
-      debugPrint('❌ 下载出错: $e');
-    });
-
-    // 等待初始块下载完成
-    while (!downloadComplete && downloadError == null) {
-      await Future.delayed(const Duration(milliseconds: 100));
-      final exists = await tempFile.exists();
-      final length = exists ? await tempFile.length() : 0;
-      if (length >= initialChunk) {
-        break; // 已有足够数据开始播放
-      }
+    // 获取 SSH 客户端（需要通过 sshService 访问）
+    final sshClient = _sshService.getClient();
+    if (sshClient == null) {
+      debugPrint('❌ SSH 客户端未连接');
+      return;
     }
 
-    debugPrint('🎵 开始播放（下载进行中...）');
-    final isVideo = file.isVideo;
-    await _audioPlayerService.playFile(tempFile.path, isVideo: isVideo);
-    _isPlaying = true;
+    final fileSize = file.size ?? await _sshService.getFileSize(file.path) ?? 0;
 
-    // 等待下载任务完成
-    await downloadTask;
+    // 启动流式服务
+    final streamUrl = await _streamingService.startStreaming(
+      sshClient: sshClient,
+      remotePath: file.path,
+      fileSize: fileSize,
+    );
+
+    debugPrint('🎵 开始播放流式媒体: $streamUrl');
+    final isVideo = file.isVideo;
+    await _audioPlayerService.playUrl(streamUrl, isVideo: isVideo);
+    _isPlaying = true;
   }
 
   Future<void> togglePlayPause() async {
@@ -316,6 +288,7 @@ class AppProvider extends ChangeNotifier {
 
   Future<void> stopPlayback() async {
     await _audioPlayerService.stop();
+    await _streamingService.stop();
     _isPlaying = false;
     notifyListeners();
   }
