@@ -234,6 +234,8 @@ class AppProvider extends ChangeNotifier {
         debugPrint('🎵 小文件 (${sizeInMB}MB)，下载后播放');
         await _playMediaAfterDownload(file);
       }
+
+      _isPlaying = true;
     } catch (e) {
       debugPrint('播放失败: $e');
     } finally {
@@ -249,7 +251,6 @@ class AppProvider extends ChangeNotifier {
 
     final isVideo = file.isVideo;
     await _audioPlayerService.playFile(tempFile.path, isVideo: isVideo);
-    _isPlaying = true;
   }
 
   // 大文件：真正的流式下载边下边播
@@ -275,7 +276,6 @@ class AppProvider extends ChangeNotifier {
     debugPrint('🎵 开始播放流式媒体: $streamUrl');
     final isVideo = file.isVideo;
     await _audioPlayerService.playUrl(streamUrl, isVideo: isVideo);
-    _isPlaying = true;
   }
 
   Future<void> togglePlayPause() async {

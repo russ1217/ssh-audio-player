@@ -237,10 +237,14 @@ class _MobileAudioPlayerService extends AudioPlayerServiceBase {
   Future<void> playUrl(String url, {bool isVideo = false}) async {
     if (!_isInitialized || _audioPlayer == null) return;
     try {
+      debugPrint('🎵 准备播放 URL: $url');
       await _audioPlayer!.setUrl(url);
-      await _audioPlayer!.play();
-    } catch (e) {
-      debugPrint('播放 URL 失败: $e');
+      debugPrint('🎵 URL 加载成功，持续时间: ${_audioPlayer!.duration}');
+      _audioPlayer!.play();
+      debugPrint('🎵 播放命令已发送');
+    } catch (e, stackTrace) {
+      debugPrint('❌ 播放 URL 失败: $e');
+      debugPrint('堆栈: $stackTrace');
     }
   }
 
