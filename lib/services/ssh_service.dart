@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter/foundation.dart';
 import '../models/ssh_config.dart';
@@ -119,6 +120,74 @@ class SSHService {
       return attrs?.size;
     } catch (e) {
       return null;
+    }
+  }
+
+  /// 流式下载文件到本地（支持边下边播）
+  /// [progressCallback] 回调函数，参数为已下载的字节数和总字节数
+  Future<void> downloadFileStreaming({
+    required String remotePath,
+    required String localPath,
+    Function(int downloaded, int total)? progressCallback,
+  }) async {
+    if (_client == null) {
+      throw Exception('未连接到服务器');
+    }
+
+    SftpFileHandle? file;
+    SftpClient? sftp;
+
+    try {
+      debugPrint('📡 开始流式下载: $remotePath');
+      sftp = await _client!.sftp();
+      file = await sftp.open(remotePath);
+
+      // 获取文件总大小
+      final attrs = await file.stat();
+      final totalSize = attrs?.size ?? 0;
+      debugPrint('📁 文件总大小: ${totalSize ~/ 1024 ~/ 1024} MB');
+
+      // 打开本地文件
+      final localFile = File(localPath);
+      final sink = localFile.openWrite(mode: FileMode.write);
+
+      // 分块读取（每块 64KB）
+      const chunkSize = 64 * 1024;
+      int downloaded = 0;
+      int position = 0;
+
+      while (true) {
+        // 读取一块数据
+        final chunk = await file.read(position: position, len: chunkSize);
+
+        if (chunk.isEmpty) {
+          break; // 文件读取完成
+        }
+
+        // 写入本地文件并立即刷新到磁盘
+        sink.add(chunk);
+        await sink.flush(); // 关键：确保数据写入磁盘，播放器可以读取
+        position += chunk.length;
+        downloaded += chunk.length;
+
+        // 回调进度
+        progressCallback?.call(downloaded, totalSize);
+      }
+
+      // 关闭写入器
+      await sink.close();
+      file.close();
+      sftp.close();
+
+      debugPrint('✅ 流式下载完成: $localPath');
+    } catch (e) {
+      debugPrint('❌ 流式下载失败: $e');
+      // 确保资源被释放
+      try {
+        file?.close();
+        sftp?.close();
+      } catch (_) {}
+      rethrow;
     }
   }
 
