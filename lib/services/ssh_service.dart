@@ -59,28 +59,33 @@ class SSHService {
       throw Exception('未连接到服务器');
     }
 
+    SftpClient? sftp;
     try {
-      final sftp = await _client!.sftp();
+      sftp = await _client!.sftp();
       final items = await sftp.listdir(path);
-      
+
       final files = <MediaFile>[];
       for (final item in items) {
         // 跳过 . 和 ..
         if (item.filename == '.' || item.filename == '..') continue;
-        
+
         final isDirectory = item.attr?.isDirectory ?? false;
         final size = item.attr?.size;
         final filePath = path.endsWith('/') ? '$path${item.filename}' : '$path/${item.filename}';
-        
+
         files.add(isDirectory
             ? MediaFile.directory(filePath, item.filename)
             : MediaFile.file(filePath, item.filename, size: size));
       }
-      
-      sftp.close();
+
       return files;
     } catch (e) {
+      debugPrint('❌ 列出目录失败: $e');
       throw Exception('列出目录失败: $e');
+    } finally {
+      try {
+        sftp?.close();
+      } catch (_) {}
     }
   }
 
@@ -89,22 +94,26 @@ class SSHService {
       throw Exception('未连接到服务器');
     }
 
+    SftpClient? sftp;
+    SftpFile? file;
     try {
-      final sftp = await _client!.sftp();
+      sftp = await _client!.sftp();
       debugPrint('📡 SFTP 读取文件: $path');
-      final file = await sftp.open(path);
+      file = await sftp.open(path);
 
       // 读取整个文件内容
       final content = await file.readBytes();
 
-      file.close();
-      sftp.close();
-      
       debugPrint('📡 读取成功，大小: ${content.length ~/ 1024} KB');
       return content;
     } catch (e) {
       debugPrint('❌ SFTP 读取文件失败: $e');
       throw Exception('读取文件失败: $e');
+    } finally {
+      try {
+        await file?.close();
+        sftp?.close();
+      } catch (_) {}
     }
   }
 
@@ -113,13 +122,18 @@ class SSHService {
       throw Exception('未连接到服务器');
     }
 
+    SftpClient? sftp;
     try {
-      final sftp = await _client!.sftp();
+      sftp = await _client!.sftp();
       final attrs = await sftp.stat(path);
-      sftp.close();
       return attrs?.size;
     } catch (e) {
+      debugPrint('❌ 获取文件大小失败: $e');
       return null;
+    } finally {
+      try {
+        sftp?.close();
+      } catch (_) {}
     }
   }
 

@@ -120,9 +120,11 @@ class StreamingAudioService {
     );
 
     // 从 SFTP 读取并流式传输
+    SftpClient? sftp;
+    SftpFile? file;
     try {
-      final sftp = await sshClient.sftp();
-      final file = await sftp.open(remotePath);
+      sftp = await sshClient.sftp();
+      file = await sftp.open(remotePath);
 
       const bufferSize = 64 * 1024; // 64KB
       int position = startByte;
@@ -140,22 +142,30 @@ class StreamingAudioService {
         position += chunk.length;
         remaining -= chunk.length;
       }
-
-      await file.close();
-      sftp.close();
     } catch (e) {
       debugPrint('❌ SFTP 流式传输失败: $e');
       request.response.statusCode = HttpStatus.internalServerError;
+    } finally {
+      try {
+        await file?.close();
+        sftp?.close();
+      } catch (_) {}
     }
 
     await request.response.close();
   }
 
   Future<int> _getFileSize(SSHClient sshClient, String remotePath) async {
-    final sftp = await sshClient.sftp();
-    final attrs = await sftp.stat(remotePath);
-    sftp.close();
-    return attrs?.size ?? 0;
+    SftpClient? sftp;
+    try {
+      sftp = await sshClient.sftp();
+      final attrs = await sftp.stat(remotePath);
+      return attrs?.size ?? 0;
+    } finally {
+      try {
+        sftp?.close();
+      } catch (_) {}
+    }
   }
 
   String _getContentType(String path) {
