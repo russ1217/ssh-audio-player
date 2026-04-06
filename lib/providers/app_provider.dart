@@ -345,6 +345,14 @@ class AppProvider extends ChangeNotifier {
     }
   }
 
+  /// 从播放列表指定索引开始播放
+  Future<void> playFromPlaylistIndex(int index) async {
+    if (index >= 0 && index < _playlist.length) {
+      _currentIndex = index;
+      await playMedia(_playlist[_currentIndex]);
+    }
+  }
+
   void clearPlaylist() {
     _playlist.clear();
     _currentIndex = 0;

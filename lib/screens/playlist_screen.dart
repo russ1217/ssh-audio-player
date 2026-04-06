@@ -57,58 +57,111 @@ class PlaylistScreen extends StatelessWidget {
             );
           }
 
-          return ReorderableListView.builder(
-            itemCount: provider.playlist.length,
-            onReorder: (oldIndex, newIndex) {
-              // 这里可以实现拖拽重排序
-            },
-            itemBuilder: (context, index) {
-              final file = provider.playlist[index];
-              final isCurrentPlaying = index == provider.currentIndex && provider.isPlaying;
+          return Column(
+            children: [
+              // Prev / Next 控制按钮
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.skip_previous, size: 32),
+                      onPressed: provider.currentIndex > 0
+                          ? () => provider.playPreviousInPlaylist()
+                          : null,
+                      tooltip: '上一曲',
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Center(
+                        child: Text(
+                          provider.currentPlayingFile != null
+                              ? '正在播放: ${provider.currentPlayingFile!.name}'
+                              : '播放列表 (${provider.playlist.length} 首)',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: provider.currentPlayingFile != null
+                                ? Theme.of(context).colorScheme.primary
+                                : Theme.of(context).colorScheme.onSurface,
+                            fontWeight: provider.currentPlayingFile != null
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    IconButton(
+                      icon: const Icon(Icons.skip_next, size: 32),
+                      onPressed: provider.currentIndex < provider.playlist.length - 1
+                          ? () => provider.playNextInPlaylist()
+                          : null,
+                      tooltip: '下一曲',
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              // 播放列表
+              Expanded(
+                child: ReorderableListView.builder(
+                  itemCount: provider.playlist.length,
+                  onReorder: (oldIndex, newIndex) {
+                    // 这里可以实现拖拽重排序
+                  },
+                  itemBuilder: (context, index) {
+                    final file = provider.playlist[index];
+                    final isCurrentPlaying = index == provider.currentIndex && provider.isPlaying;
 
-              return Card(
-                key: ValueKey(file.path),
-                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                child: ListTile(
-                  leading: Icon(
-                    file.isAudio ? Icons.audiotrack : Icons.movie,
-                    color: isCurrentPlaying ? Colors.deepPurple : null,
-                  ),
-                  title: Text(
-                    file.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: isCurrentPlaying
-                        ? const TextStyle(
-                            color: Colors.deepPurple,
-                            fontWeight: FontWeight.bold,
-                          )
-                        : null,
-                  ),
-                  subtitle: Text(
-                    file.path,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (index == provider.currentIndex)
-                        const Icon(Icons.play_arrow, color: Colors.deepPurple),
-                      IconButton(
-                        icon: const Icon(Icons.delete),
-                        onPressed: () {
-                          provider.removeFromPlaylist(index);
+                    return Card(
+                      key: ValueKey(file.path),
+                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      child: ListTile(
+                        leading: Icon(
+                          file.isAudio ? Icons.audiotrack : Icons.movie,
+                          color: isCurrentPlaying ? Colors.deepPurple : null,
+                        ),
+                        title: Text(
+                          file.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: isCurrentPlaying
+                              ? const TextStyle(
+                                  color: Colors.deepPurple,
+                                  fontWeight: FontWeight.bold,
+                                )
+                              : null,
+                        ),
+                        subtitle: Text(
+                          file.path,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (index == provider.currentIndex)
+                              const Icon(Icons.play_arrow, color: Colors.deepPurple),
+                            IconButton(
+                              icon: const Icon(Icons.delete),
+                              onPressed: () {
+                                provider.removeFromPlaylist(index);
+                              },
+                            ),
+                          ],
+                        ),
+                        onTap: () {
+                          // 点击播放列表中的文件，从当前位置开始播放
+                          provider.playFromPlaylistIndex(index);
                         },
                       ),
-                    ],
-                  ),
-                  onTap: () {
-                    provider.playMedia(file);
+                    );
                   },
                 ),
-              );
-            },
+              ),
+            ],
           );
         },
       ),
