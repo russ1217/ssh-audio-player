@@ -10,7 +10,7 @@ class BottomPlayerBar extends StatelessWidget {
     return Consumer<AppProvider>(
       builder: (context, provider, child) {
         // 如果没有正在播放的文件，隐藏底部栏
-        if (!provider.isPlaying && provider.playlist.isEmpty) {
+        if (provider.currentPlayingFile == null) {
           return const SizedBox.shrink();
         }
 
@@ -116,13 +116,13 @@ class BottomPlayerBar extends StatelessWidget {
                 ],
               ),
               // 当前播放文件信息
-              if (provider.playlist.isNotEmpty && provider.currentIndex < provider.playlist.length)
+              if (provider.currentPlayingFile != null)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 4),
                   child: Row(
                     children: [
                       Icon(
-                        provider.playlist[provider.currentIndex].isAudio
+                        provider.currentPlayingFile!.isAudio
                             ? Icons.audiotrack
                             : Icons.movie,
                         size: 16,
@@ -131,7 +131,7 @@ class BottomPlayerBar extends StatelessWidget {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          provider.playlist[provider.currentIndex].name,
+                          provider.currentPlayingFile!.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(

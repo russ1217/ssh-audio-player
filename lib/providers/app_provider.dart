@@ -32,6 +32,7 @@ class AppProvider extends ChangeNotifier {
   // 播放列表
   List<MediaFile> _playlist = [];
   int _currentIndex = 0;
+  MediaFile? _currentPlayingFile; // 当前正在播放的文件
 
   // 播放器状态
   bool _isPlaying = false;
@@ -52,6 +53,7 @@ class AppProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   List<MediaFile> get playlist => _playlist;
   int get currentIndex => _currentIndex;
+  MediaFile? get currentPlayingFile => _currentPlayingFile;
   bool get isPlaying => _isPlaying;
   Duration get position => _position;
   Duration get duration => _duration;
@@ -220,6 +222,7 @@ class AppProvider extends ChangeNotifier {
 
     try {
       _isLoading = true;
+      _currentPlayingFile = file;
       notifyListeners();
 
       // 获取文件大小
@@ -284,6 +287,7 @@ class AppProvider extends ChangeNotifier {
     await _audioPlayerService.stop();
     await _streamingService.stop();
     _isPlaying = false;
+    _currentPlayingFile = null;
     notifyListeners();
   }
 
