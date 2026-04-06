@@ -197,5 +197,40 @@ class SSHService {
   /// 获取 SSH 客户端（用于流式服务）
   SSHClient? getClient() => _client;
 
+  /// 创建新的 SSH 连接（用于流式服务）
+  Future<SSHClient> createNewConnection() async {
+    if (_currentConfig == null) {
+      throw Exception('没有当前的 SSH 配置');
+    }
+
+    final socket = await SSHSocket.connect(_currentConfig!.host, _currentConfig!.port);
+
+    SSHClient client;
+    if (_currentConfig!.privateKey != null && _currentConfig!.privateKey!.isNotEmpty) {
+      final keyPairs = SSHKeyPair.fromPem(
+        _currentConfig!.privateKey!,
+        _currentConfig!.passphrase,
+      );
+      client = SSHClient(
+        socket,
+        username: _currentConfig!.username,
+        identities: keyPairs,
+      );
+    } else if (_currentConfig!.password != null && _currentConfig!.password!.isNotEmpty) {
+      client = SSHClient(
+        socket,
+        username: _currentConfig!.username,
+        onPasswordRequest: () => _currentConfig!.password!,
+      );
+    } else {
+      throw Exception('需要提供密码或私钥');
+    }
+
+    // 测试连接
+    await client.run('echo ok');
+    debugPrint('🔗 新的 SSH 连接已建立（用于流式服务）');
+    return client;
+  }
+
   SSHConfig? get currentConfig => _currentConfig;
 }

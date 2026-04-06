@@ -7,31 +7,37 @@ import 'package:dartssh2/dartssh2.dart';
 /// 将 SFTP 远程文件通过 HTTP 流式传输给 just_audio
 class StreamingAudioService {
   HttpServer? _server;
-  SSHClient? _sshClient;
+  SSHClient? _streamingSshClient; // 独立的 SSH 连接用于流式传输
   int? _port;
 
   /// 启动流式服务并返回播放 URL
   /// [sshClient] SSH 客户端连接
   /// [remotePath] 远程文件路径
   /// [fileSize] 文件大小（可选，会自动获取）
+  /// [sshConfig] SSH 配置（用于创建独立的流式连接）
   Future<String> startStreaming({
     required SSHClient sshClient,
     required String remotePath,
+    required Future<SSHClient> Function() createNewSshClient, // 工厂函数：创建新的 SSH 连接
     int? fileSize,
   }) async {
     // 停止之前的服务
     await stop();
 
-    _sshClient = sshClient;
+    // 创建独立的 SSH 连接用于流式传输
+    _streamingSshClient = await createNewSshClient();
+    debugPrint('🔗 流式服务独立 SSH 连接已建立');
 
     // 在随机端口启动 HTTP 服务器
     _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     _port = _server!.port;
     debugPrint('🌐 HTTP 流式服务启动在端口 $_port');
 
+    final streamingClient = _streamingSshClient!;
+
     // 处理请求
     _server!.listen((request) async {
-      await _handleHttpRequest(request, sshClient, remotePath, fileSize);
+      await _handleHttpRequest(request, streamingClient, remotePath, fileSize);
     });
 
     final url = 'http://127.0.0.1:$_port/stream';
@@ -45,6 +51,11 @@ class StreamingAudioService {
       await _server!.close(force: true);
       _server = null;
       debugPrint('🛑 HTTP 流式服务已停止');
+    }
+    if (_streamingSshClient != null) {
+      _streamingSshClient!.close();
+      _streamingSshClient = null;
+      debugPrint('🛑 流式 SSH 连接已关闭');
     }
   }
 

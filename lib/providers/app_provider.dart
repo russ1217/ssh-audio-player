@@ -257,20 +257,14 @@ class AppProvider extends ChangeNotifier {
   Future<void> _playMediaStreaming(MediaFile file) async {
     debugPrint('🌐 启动 HTTP 流式服务...');
 
-    // 获取 SSH 客户端（需要通过 sshService 访问）
-    final sshClient = _sshService.getClient();
-    if (sshClient == null) {
-      debugPrint('❌ SSH 客户端未连接');
-      return;
-    }
-
     final fileSize = file.size ?? await _sshService.getFileSize(file.path) ?? 0;
 
-    // 启动流式服务
+    // 启动流式服务（使用独立的 SSH 连接）
     final streamUrl = await _streamingService.startStreaming(
-      sshClient: sshClient,
+      sshClient: _sshService.getClient()!,
       remotePath: file.path,
       fileSize: fileSize,
+      createNewSshClient: _sshService.createNewConnection,
     );
 
     debugPrint('🎵 开始播放流式媒体: $streamUrl');
