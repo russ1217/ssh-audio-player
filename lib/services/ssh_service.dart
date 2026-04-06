@@ -6,6 +6,7 @@ import '../models/media_file.dart';
 
 class SSHService {
   SSHClient? _client;
+  SftpClient? _sftp; // 复用的 SFTP 连接
   SSHConfig? _currentConfig;
 
   bool get isConnected => _client != null;
@@ -40,33 +41,38 @@ class SSHService {
 
       // 测试连接
       await _client!.run('echo ok');
+      
+      // 初始化并复用 SFTP 连接
+      _sftp = await _client!.sftp();
+      debugPrint('🔗 SFTP 会话已建立（复用模式）');
+      
       return true;
     } catch (e) {
       _client = null;
+      _sftp = null;
       _currentConfig = null;
       rethrow;
     }
   }
 
   Future<void> disconnect() async {
+    _sftp?.close();
+    _sftp = null;
     _client?.close();
     _client = null;
     _currentConfig = null;
   }
 
   Future<List<MediaFile>> listDirectory(String path) async {
-    if (_client == null) {
+    if (_sftp == null) {
       throw Exception('未连接到服务器');
     }
 
-    SftpClient? sftp;
     try {
-      sftp = await _client!.sftp();
-      final items = await sftp.listdir(path);
+      final items = await _sftp!.listdir(path);
 
       final files = <MediaFile>[];
       for (final item in items) {
-        // 跳过 . 和 ..
         if (item.filename == '.' || item.filename == '..') continue;
 
         final isDirectory = item.attr?.isDirectory ?? false;
@@ -82,26 +88,19 @@ class SSHService {
     } catch (e) {
       debugPrint('❌ 列出目录失败: $e');
       throw Exception('列出目录失败: $e');
-    } finally {
-      try {
-        sftp?.close();
-      } catch (_) {}
     }
   }
 
   Future<List<int>> readFile(String path) async {
-    if (_client == null) {
+    if (_sftp == null) {
       throw Exception('未连接到服务器');
     }
 
-    SftpClient? sftp;
     SftpFile? file;
     try {
-      sftp = await _client!.sftp();
       debugPrint('📡 SFTP 读取文件: $path');
-      file = await sftp.open(path);
+      file = await _sftp!.open(path);
 
-      // 读取整个文件内容
       final content = await file.readBytes();
 
       debugPrint('📡 读取成功，大小: ${content.length ~/ 1024} KB');
@@ -112,28 +111,21 @@ class SSHService {
     } finally {
       try {
         await file?.close();
-        sftp?.close();
       } catch (_) {}
     }
   }
 
   Future<int?> getFileSize(String path) async {
-    if (_client == null) {
+    if (_sftp == null) {
       throw Exception('未连接到服务器');
     }
 
-    SftpClient? sftp;
     try {
-      sftp = await _client!.sftp();
-      final attrs = await sftp.stat(path);
+      final attrs = await _sftp!.stat(path);
       return attrs?.size;
     } catch (e) {
       debugPrint('❌ 获取文件大小失败: $e');
       return null;
-    } finally {
-      try {
-        sftp?.close();
-      } catch (_) {}
     }
   }
 
