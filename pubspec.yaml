@@ -1,0 +1,46 @@
+name: ssh_audio_player
+description: 一个通过 SSH 访问服务器播放音频的播放器应用
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.2.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  
+  # SSH 连接
+  dartssh2: ^2.8.2
+  
+  # 音频播放
+  just_audio: ^0.9.36
+  audio_service: ^0.18.12
+  
+  # 状态管理
+  provider: ^6.1.1
+  riverpod: ^2.4.9
+  
+  # 本地存储
+  shared_preferences: ^2.2.2
+  path: ^1.8.3
+  
+  # UI 组件
+  flutter_slidable: ^3.1.0
+  cached_network_image: ^3.3.1
+  
+  # 工具
+  path_provider: ^2.1.2
+  permission_handler: ^11.2.0
+  flutter_foreground_task: ^6.1.2
+  rxdart: ^0.27.7
+  uuid: ^4.3.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+
+flutter:
+  uses-material-design: true
