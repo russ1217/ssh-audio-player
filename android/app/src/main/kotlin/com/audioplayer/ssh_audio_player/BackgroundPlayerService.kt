@@ -110,7 +110,10 @@ class BackgroundPlayerService : Service() {
                         MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS)
                 
                 // 设置初始播放状态（暂停）
-                setState(PlaybackState.STATE_PAUSED, 0, 1.0f)
+                val initialState = PlaybackState.Builder()
+                    .setState(PlaybackState.STATE_PAUSED, 0, 1.0f)
+                    .build()
+                setPlaybackState(initialState)
                 
                 // 激活会话
                 isActive = true
