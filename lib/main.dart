@@ -7,6 +7,10 @@ import 'services/background_service.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // ✅ 初始化媒体控制监听器
+  MediaSessionService.initializeMediaControlListener();
+  
   runApp(const MyApp());
 }
 
@@ -27,6 +31,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _initApp();
+    
+    // ✅ 设置媒体控制回调
+    MediaSessionService.onMediaControl = _handleMediaControl;
   }
 
   @override
@@ -38,6 +45,44 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   Future<void> _initApp() async {
     await _notificationService.init();
     debugPrint('✅ 应用初始化完成，使用前台服务机制保持后台播放');
+  }
+
+  /// ✅ 处理来自通知栏的媒体控制命令
+  Future<void> _handleMediaControl(String action) async {
+    debugPrint('🎮 处理媒体控制命令: $action');
+    
+    // 获取 AppProvider 实例
+    final context = _navigatorKey.currentContext;
+    if (context == null) {
+      debugPrint('⚠️ 无法获取 context，忽略控制命令');
+      return;
+    }
+    
+    final provider = context.read<AppProvider>();
+    
+    switch (action) {
+      case 'play':
+        if (!provider.isPlaying) {
+          await provider.togglePlayPause();
+        }
+        break;
+      case 'pause':
+        if (provider.isPlaying) {
+          await provider.togglePlayPause();
+        }
+        break;
+      case 'stop':
+        await provider.stopPlayback();
+        break;
+      case 'next':
+        await provider.playNextInPlaylist();
+        break;
+      case 'previous':
+        await provider.playPreviousInPlaylist();
+        break;
+      default:
+        debugPrint('⚠️ 未知的媒体控制命令: $action');
+    }
   }
 
   /// 停止前台服务和播放器

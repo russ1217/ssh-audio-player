@@ -1,7 +1,9 @@
 package com.audioplayer.ssh_audio_player
 
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
@@ -15,6 +17,9 @@ class MainActivity : FlutterActivity() {
     private val BACKGROUND_SERVICE_CHANNEL = "com.example.player/background_service"
     // ✅ 新增：媒体会话通道，用于更新曲目信息
     private val MEDIA_SESSION_CHANNEL = "com.example.player/media_session"
+    
+    // ✅ 媒体控制广播接收器
+    private var mediaControlReceiver: BroadcastReceiver? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -105,6 +110,46 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }
+        
+        // ✅ 注册媒体控制广播接收器
+        registerMediaControlReceiver()
+    }
+    
+    /**
+     * ✅ 注册媒体控制广播接收器
+     */
+    private fun registerMediaControlReceiver() {
+        mediaControlReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                val action = intent?.getStringExtra("action")
+                println("📡 MainActivity 收到媒体控制命令: $action")
+                
+                // 通过 MethodChannel 将命令转发到 Flutter 层
+                flutterEngine?.dartExecutor?.binaryMessenger?.let { messenger ->
+                    val channel = MethodChannel(messenger, "com.audioplayer.ssh_audio_player/media_control")
+                    channel.invokeMethod("onMediaControl", mapOf("action" to action))
+                }
+            }
+        }
+        
+        val filter = IntentFilter("com.audioplayer.ssh_audio_player.MEDIA_CONTROL")
+        registerReceiver(mediaControlReceiver, filter)
+        println("✅ 媒体控制广播接收器已注册")
+    }
+    
+    /**
+     * ✅ 注销媒体控制广播接收器
+     */
+    private fun unregisterMediaControlReceiver() {
+        mediaControlReceiver?.let {
+            try {
+                unregisterReceiver(it)
+                println("🗑️ 媒体控制广播接收器已注销")
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        mediaControlReceiver = null
     }
     
     /**
@@ -141,6 +186,13 @@ class MainActivity : FlutterActivity() {
             startActivity(intent)
         }
     }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // ✅ 注销广播接收器
+        unregisterMediaControlReceiver()
+    }
+
 }
 
 /**

@@ -32,6 +32,10 @@ class BackgroundPlayerService : Service() {
     
     // ✅ MediaSession 用于向蓝牙设备广播媒体信息
     private var mediaSession: MediaSession? = null
+    
+    // ✅ 当前播放状态（用于构建通知）
+    private var currentTitle: String = "SSH Player"
+    private var isCurrentlyPlaying: Boolean = false
 
     override fun onCreate() {
         super.onCreate()
@@ -54,13 +58,7 @@ class BackgroundPlayerService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // Start Foreground with Notification
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Player Active")
-            .setContentText("SSH and Playback running in background")
-            .setSmallIcon(android.R.drawable.ic_media_play)
-            .setOngoing(true) // 设置为持续通知，防止被清除
-            .build()
-
+        val notification = buildMediaStyleNotification()
         startForeground(NOTIFICATION_ID, notification)
         
         // Keep CPU on indefinitely (until service is stopped)
@@ -115,6 +113,39 @@ class BackgroundPlayerService : Service() {
                     .build()
                 setPlaybackState(initialState)
                 
+                // ✅ 设置 MediaSession 回调，处理来自通知栏和蓝牙设备的控制命令
+                setCallback(object : MediaSession.Callback() {
+                    override fun onPlay() {
+                        super.onPlay()
+                        println("▶️ MediaSession: 收到播放命令")
+                        handleMediaControl("play")
+                    }
+                    
+                    override fun onPause() {
+                        super.onPause()
+                        println("⏸️ MediaSession: 收到暂停命令")
+                        handleMediaControl("pause")
+                    }
+                    
+                    override fun onStop() {
+                        super.onStop()
+                        println("⏹️ MediaSession: 收到停止命令")
+                        handleMediaControl("stop")
+                    }
+                    
+                    override fun onSkipToNext() {
+                        super.onSkipToNext()
+                        println("⏭️ MediaSession: 收到下一曲命令")
+                        handleMediaControl("next")
+                    }
+                    
+                    override fun onSkipToPrevious() {
+                        super.onSkipToPrevious()
+                        println("⏮️ MediaSession: 收到上一曲命令")
+                        handleMediaControl("previous")
+                    }
+                })
+                
                 // 激活会话
                 isActive = true
                 
@@ -124,6 +155,123 @@ class BackgroundPlayerService : Service() {
             e.printStackTrace()
             println("❌ MediaSession 初始化失败: ${e.message}")
         }
+    }
+
+    /**
+     * ✅ 处理媒体控制命令（通过 MethodChannel 转发到 Flutter 层）
+     */
+    private fun handleMediaControl(action: String) {
+        try {
+            // 通过 MainActivity 的 MethodChannel 发送控制命令到 Flutter
+            val intent = Intent("com.audioplayer.ssh_audio_player.MEDIA_CONTROL").apply {
+                putExtra("action", action)
+                setPackage(packageName)
+            }
+            sendBroadcast(intent)
+            println("📡 广播媒体控制命令: $action")
+        } catch (e: Exception) {
+            e.printStackTrace()
+            println("❌ 发送媒体控制命令失败: ${e.message}")
+        }
+    }
+
+    /**
+     * ✅ 构建带媒体控制按钮的通知
+     */
+    private fun buildMediaStyleNotification(): NotificationCompat.Builder {
+        // 创建点击通知时打开应用的 PendingIntent
+        val openAppIntent = packageManager.getLaunchIntentForPackage(packageName)
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            openAppIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        
+        // ✅ 创建媒体控制动作的 PendingIntent
+        val playIntent = createMediaControlPendingIntent("play")
+        val pauseIntent = createMediaControlPendingIntent("pause")
+        val stopIntent = createMediaControlPendingIntent("stop")
+        val nextIntent = createMediaControlPendingIntent("next")
+        val previousIntent = createMediaControlPendingIntent("previous")
+        
+        // 根据播放状态选择显示播放或暂停按钮
+        val playbackAction = if (isCurrentlyPlaying) {
+            NotificationCompat.Action(
+                android.R.drawable.ic_media_pause,
+                "Pause",
+                pauseIntent
+            )
+        } else {
+            NotificationCompat.Action(
+                android.R.drawable.ic_media_play,
+                "Play",
+                playIntent
+            )
+        }
+        
+        // 构建通知
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle(currentTitle)
+            .setContentText("SSH Player - Playing")
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setContentIntent(pendingIntent)
+            .setOngoing(true) // 设置为持续通知，防止被清除
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC) // 锁屏可见
+            .setStyle(
+                androidx.media.app.NotificationCompat.MediaStyle()
+                    .setShowActionsInCompactView(0, 1, 2) // 在紧凑视图中显示前3个动作
+                    .setMediaSession(mediaSession?.sessionToken) // 关联 MediaSession
+            )
+            // ✅ 添加媒体控制按钮
+            .addAction(
+                android.R.drawable.ic_media_previous,
+                "Previous",
+                previousIntent
+            )
+            .addAction(playbackAction)
+            .addAction(
+                android.R.drawable.ic_media_next,
+                "Next",
+                nextIntent
+            )
+            .addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
+                "Stop",
+                stopIntent
+            )
+    }
+    
+    /**
+     * ✅ 创建媒体控制 PendingIntent
+     */
+    private fun createMediaControlPendingIntent(action: String): PendingIntent {
+        val intent = Intent("com.audioplayer.ssh_audio_player.MEDIA_CONTROL").apply {
+            putExtra("action", action)
+            setPackage(packageName)
+        }
+        
+        return PendingIntent.getBroadcast(
+            this,
+            action.hashCode(), // 使用 action 的哈希码作为 requestCode，确保唯一性
+            intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+    }
+
+    /**
+     * ✅ 更新通知内容（当播放状态或曲目变化时调用）
+     */
+    fun updateNotification(title: String, isPlaying: Boolean) {
+        currentTitle = title
+        isCurrentlyPlaying = isPlaying
+        
+        // 重新构建并更新通知
+        val notification = buildMediaStyleNotification().build()
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.notify(NOTIFICATION_ID, notification)
+        
+        println("🔔 通知已更新: $title, 播放状态: ${if (isPlaying) "播放中" else "暂停"}")
     }
 
     /**
@@ -141,6 +289,10 @@ class BackgroundPlayerService : Service() {
                     .build()
                 
                 session.setMetadata(metadata)
+                
+                // ✅ 同时更新通知
+                updateNotification(title, isCurrentlyPlaying)
+                
                 println("📻 MediaSession 元数据已更新: $title")
             }
         } catch (e: Exception) {
@@ -160,6 +312,12 @@ class BackgroundPlayerService : Service() {
                     .build()
                 
                 session.setPlaybackState(playbackState)
+                
+                // ✅ 更新内部播放状态标记
+                isCurrentlyPlaying = (state == PlaybackState.STATE_PLAYING)
+                
+                // ✅ 更新通知以反映新的播放状态
+                updateNotification(currentTitle, isCurrentlyPlaying)
             }
         } catch (e: Exception) {
             e.printStackTrace()

@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 
 class BackgroundService {
   static const MethodChannel _channel = MethodChannel('com.example.player/background_service');
@@ -25,6 +26,9 @@ class BackgroundService {
 /// ✅ MediaSession 服务，用于向蓝牙设备广播媒体信息
 class MediaSessionService {
   static const MethodChannel _channel = MethodChannel('com.example.player/media_session');
+  
+  // ✅ 媒体控制回调
+  static Function(String action)? onMediaControl;
 
   /// 播放状态常量（对应 Android PlaybackState）
   static const int STATE_NONE = 0;
@@ -35,6 +39,24 @@ class MediaSessionService {
   static const int STATE_REWINDING = 5;
   static const int STATE_BUFFERING = 6;
   static const int STATE_ERROR = 7;
+
+  /// ✅ 初始化媒体控制监听器
+  static void initializeMediaControlListener() {
+    const controlChannel = MethodChannel('com.audioplayer.ssh_audio_player/media_control');
+    
+    controlChannel.setMethodCallHandler((call) async {
+      if (call.method == 'onMediaControl') {
+        final action = call.arguments['action'] as String?;
+        debugPrint('📱 Flutter 收到媒体控制命令: $action');
+        
+        if (action != null && onMediaControl != null) {
+          onMediaControl!(action);
+        }
+      }
+    });
+    
+    debugPrint('✅ 媒体控制监听器已初始化');
+  }
 
   /// 更新媒体元数据（曲目标题、艺术家、专辑等）
   /// 
