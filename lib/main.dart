@@ -40,6 +40,26 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     debugPrint('✅ 应用初始化完成，使用前台服务机制保持后台播放');
   }
 
+  /// 停止前台服务和播放器
+  Future<void> _stopForegroundServiceAndPlayer() async {
+    debugPrint('🛑 应用被销毁，停止前台服务和播放器...');
+    
+    try {
+      // 停止前台服务
+      if (_isForegroundServiceRunning) {
+        await BackgroundService.stop();
+        _isForegroundServiceRunning = false;
+        debugPrint('✅ 前台服务已停止');
+      }
+      
+      // 隐藏通知
+      _notificationService.hideNotification();
+      debugPrint('✅ 通知已隐藏');
+    } catch (e) {
+      debugPrint('⚠️ 停止服务时出错: $e');
+    }
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
@@ -68,6 +88,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       //   _isForegroundServiceRunning = false;
       //   debugPrint('✅ 前台服务已停止');
       // });
+    } else if (state == AppLifecycleState.detached) {
+      // ✅ 关键修复：应用被销毁时（用户杀死app），停止前台服务和播放器
+      _stopForegroundServiceAndPlayer();
     }
   }
 

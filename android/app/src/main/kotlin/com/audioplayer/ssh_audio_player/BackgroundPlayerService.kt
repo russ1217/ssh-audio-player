@@ -53,7 +53,17 @@ class BackgroundPlayerService : Service() {
             wakeLock.acquire() // 无超时限制，直到手动释放
         }
 
-        return START_STICKY // 如果服务被杀死，系统会尝试重启
+        return START_NOT_STICKY // ✅ 关键修复：改为 NOT_STICKY，避免系统自动重启服务
+    }
+
+    /**
+     * ✅ 关键修复：当用户从最近任务中移除应用时调用
+     * 必须在此停止播放和服务，防止后台继续播放
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        println("🛑 应用被用户从最近任务中移除，停止服务和播放")
+        stopSelf()
     }
 
     override fun onDestroy() {
