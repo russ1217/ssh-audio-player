@@ -18,6 +18,9 @@
     
     <!-- ✅ 媒体控制权限（可选，用于系统级媒体按钮） -->
     <uses-permission android:name="android.permission.MEDIA_CONTENT_CONTROL" />
+    
+    <!-- ✅ Android 13+ 通知权限 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:label="@string/app_name"

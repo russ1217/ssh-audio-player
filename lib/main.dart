@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'providers/app_provider.dart';
 import 'screens/home_screen.dart';
 import 'services/notification_service.dart';
@@ -44,7 +45,35 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   Future<void> _initApp() async {
     await _notificationService.init();
+    
+    // ✅ Android 13+ 请求通知权限
+    await _requestNotificationPermission();
+    
     debugPrint('✅ 应用初始化完成，使用前台服务机制保持后台播放');
+  }
+  
+  /// ✅ 请求通知权限（Android 13+ 必需）
+  Future<void> _requestNotificationPermission() async {
+    try {
+      final status = await Permission.notification.status;
+      
+      if (status.isDenied || status.isPermanentlyDenied) {
+        debugPrint('📱 请求通知权限...');
+        final result = await Permission.notification.request();
+        
+        if (result.isGranted) {
+          debugPrint('✅ 通知权限已授予');
+        } else if (result.isPermanentlyDenied) {
+          debugPrint('⚠️ 通知权限被永久拒绝，请在设置中手动开启');
+        } else {
+          debugPrint('❌ 通知权限被拒绝');
+        }
+      } else if (status.isGranted) {
+        debugPrint('✅ 通知权限已存在');
+      }
+    } catch (e) {
+      debugPrint('⚠️ 请求通知权限失败: $e');
+    }
   }
 
   /// ✅ 处理来自通知栏的媒体控制命令
