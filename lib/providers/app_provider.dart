@@ -12,6 +12,7 @@ import '../services/audio_player_service.dart';
 import '../services/audio_player_base.dart';
 import '../services/timer_service.dart';
 import '../services/streaming_audio_service.dart';
+import '../services/background_service.dart';
 
 class AppProvider extends ChangeNotifier {
   final SSHService _sshService = SSHService();
@@ -529,6 +530,11 @@ class AppProvider extends ChangeNotifier {
   Future<void> playMedia(MediaFile file) async {
     if (!file.isMedia) return;
 
+    // ✅ 关键修复：确保音频播放器已完全初始化（解决冷启动小文件无声问题）
+    debugPrint('⏳ 确保音频播放器初始化...');
+    await _audioPlayerService.ensureInitialized();
+    debugPrint('✅ 音频播放器已初始化');
+
     // 如果文件在播放列表中，同步 currentIndex
     final playlistIndex = _playlist.indexWhere((f) => f.path == file.path);
     if (playlistIndex >= 0) {
@@ -811,6 +817,15 @@ class AppProvider extends ChangeNotifier {
     _isPlaying = false;
     _currentPlayingFile = null;
     _stopPredownloading();
+    
+    // ✅ 关键修复：停止后台前台服务，防止杀掉app后继续播放
+    try {
+      await BackgroundService.stop();
+      debugPrint('🛑 后台服务已停止');
+    } catch (e) {
+      debugPrint('⚠️ 停止后台服务失败: $e');
+    }
+    
     notifyListeners();
   }
 
@@ -1203,6 +1218,12 @@ class AppProvider extends ChangeNotifier {
     super.dispose();
   }
 }
+
+
+
+
+
+
 
 
 
