@@ -264,22 +264,19 @@ class AppProvider extends ChangeNotifier {
 
   void _setupAudioPlayerListeners() {
     _audioPlayerService.playbackStateStream.listen((state) {
-      // ✅ 修复：只在特定状态下才更新 _isPlaying，避免覆盖手动操作
-      // 播放完成或出错时，强制更新为停止状态
-      if (state == PlayerState.completed || state == PlayerState.idle) {
+      // ✅ 关键修复：只在播放完成或出错时才由监听器更新 _isPlaying
+      // 正常的播放/暂停由 togglePlayPause() 直接控制，避免状态竞争
+      if (state == PlayerState.completed) {
         _isPlaying = false;
-        debugPrint('📊 播放器状态变化（强制停止）: $state, isPlaying: $_isPlaying');
-      } else if (state == PlayerState.paused) {
-        // 只有明确收到 paused 状态时才更新
+        debugPrint('📊 播放器状态变化（播放完成）: $state, isPlaying: $_isPlaying');
+      } else if (state == PlayerState.idle) {
+        // idle 状态通常意味着停止或重置
         _isPlaying = false;
-        debugPrint('📊 播放器状态变化（暂停）: $state, isPlaying: $_isPlaying');
-      } else if (state == PlayerState.playing) {
-        // 只有明确收到 playing 状态时才更新
-        _isPlaying = true;
-        debugPrint('📊 播放器状态变化（播放）: $state, isPlaying: $_isPlaying');
+        debugPrint('📊 播放器状态变化（空闲/停止）: $state, isPlaying: $_isPlaying');
       } else {
-        // 其他状态（buffering, loading等）不改变 _isPlaying
-        debugPrint('📊 播放器中间状态（不更新_isPlaying）: $state, 保持 isPlaying: $_isPlaying');
+        // playing/paused/buffering/loading 等状态不改变 _isPlaying
+        // 这些状态由用户操作（togglePlayPause）直接控制
+        debugPrint('📊 播放器状态（不更新_isPlaying）: $state, 保持 isPlaying: $_isPlaying');
       }
       
       _lastPositionForStateCheck = _audioPlayerService.currentPosition;
@@ -1620,6 +1617,8 @@ class AppProvider extends ChangeNotifier {
     }
   }
 }
+
+
 
 
 
