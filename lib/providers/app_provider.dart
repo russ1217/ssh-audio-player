@@ -498,15 +498,19 @@ class AppProvider extends ChangeNotifier {
         }
       } else {
         debugPrint('🎵 小文件 (${sizeInMB}MB)，下载后播放');
-        // ✅ 关键修复：_playMediaAfterDownload 内部已经等待就绪，这里不需要再次等待
-        await _playMediaAfterDownload(file);
+        // ✅ 关键修复：等待 _playMediaAfterDownload 返回的就绪状态
+        final isReady = await _playMediaAfterDownload(file);
         
-        // 直接设置为播放状态（因为内部已等待就绪）
-        _isPlaying = true;
-        debugPrint('✅ 小文件播放完成设置: _currentIndex=$_currentIndex');
-        
-        // 触发预下载
-        _startPredownloading();
+        if (isReady) {
+          _isPlaying = true;
+          debugPrint('✅ 小文件播放完成设置: _currentIndex=$_currentIndex');
+          
+          // 触发预下载
+          _startPredownloading();
+        } else {
+          debugPrint('❌ 小文件播放器最终未就绪，不设置播放状态');
+          _isPlaying = false;
+        }
       }
 
       // 保存播放位置
@@ -522,7 +526,7 @@ class AppProvider extends ChangeNotifier {
   }
 
   // 小文件：下载完成后播放
-  Future<void> _playMediaAfterDownload(MediaFile file) async {
+  Future<bool> _playMediaAfterDownload(MediaFile file) async {
     final fileData = await _sshService.readFile(file.path);
     final tempFile = await _createTempFile(fileData, file.name);
     
@@ -538,14 +542,14 @@ class AppProvider extends ChangeNotifier {
     
     if (isReady) {
       debugPrint('✅ 小文件播放器已就绪');
+      return true;
     } else {
       debugPrint('⚠️ 小文件播放器未就绪，尝试重新播放');
       await _audioPlayerService.play();
-      await _waitForPlayerReady(timeout: const Duration(seconds: 5));
+      final retryReady = await _waitForPlayerReady(timeout: const Duration(seconds: 5));
+      debugPrint(retryReady ? '✅ 重试后播放器已就绪' : '❌ 重试后播放器仍未就绪');
+      return retryReady;
     }
-    
-    // 注意：不在这里触发预下载，而是在 playMedia() 中统一处理
-    // 确保所有播放路径的预下载时机一致
   }
 
   // 大文件：真正的流式下载边下边播
@@ -1199,6 +1203,10 @@ class AppProvider extends ChangeNotifier {
     }
   }
 }
+
+
+
+
 
 
 

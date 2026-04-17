@@ -3,6 +3,7 @@ import 'dart:io' show Platform;
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart' hide PlayerState;
+import 'package:audio_session/audio_session.dart';
 import 'audio_player_base.dart';
 
 // 根据平台创建不同的音频播放器实现
@@ -224,12 +225,19 @@ class _MobileAudioPlayerService extends AudioPlayerServiceBase {
 
   @override
   Future<void> playFile(String filePath, {bool isVideo = false}) async {
-    if (!_isInitialized || _audioPlayer == null) {
-      debugPrint('⚠️ 音频播放器未初始化');
-      return;
-    }
+    if (!_isInitialized || _audioPlayer == null) return;
+    
     try {
       debugPrint('🎵 准备播放文件: $filePath');
+      
+      // ✅ 关键修复：在播放前激活音频会话（解决冷启动无声问题）
+      try {
+        final session = await AudioSession.instance;
+        await session.setActive(true);
+        debugPrint('✅ 音频会话已激活');
+      } catch (e) {
+        debugPrint('⚠️ 激活音频会话失败: $e');
+      }
       
       // 检查文件是否存在
       final file = File(filePath);
@@ -240,14 +248,23 @@ class _MobileAudioPlayerService extends AudioPlayerServiceBase {
       final fileSize = await file.length();
       debugPrint('📁 文件大小: ${fileSize ~/ 1024} KB');
       
+      // ✅ 关键修复：确保音量为最大值
+      debugPrint('🔊 当前音量: ${_audioPlayer!.volume}');
+      await _audioPlayer!.setVolume(1.0);
+      debugPrint('🔊 设置音量为 1.0');
+      
       debugPrint('🎵 正在加载文件到播放器...');
       await _audioPlayer!.setFilePath(filePath);
       debugPrint('🎵 文件加载成功，持续时间: ${_audioPlayer!.duration}');
       
       debugPrint('🎵 正在启动播放...');
       // 使用 play() 但不等待它完成
-      _audioPlayer!.play();
+      await _audioPlayer!.play();
       debugPrint('🎵 播放命令已发送');
+      
+      // ✅ 关键修复：延迟检查播放状态，便于调试
+      await Future.delayed(const Duration(milliseconds: 500));
+      debugPrint('🔍 播放状态检查 - playing: ${_audioPlayer!.playing}, position: ${_audioPlayer!.position}, volume: ${_audioPlayer!.volume}');
     } catch (e, stackTrace) {
       debugPrint('❌ 播放文件失败: $e');
       debugPrint('堆栈: $stackTrace');
@@ -260,9 +277,23 @@ class _MobileAudioPlayerService extends AudioPlayerServiceBase {
     if (!_isInitialized || _audioPlayer == null) return;
     try {
       debugPrint('🎵 准备播放 URL: $url');
+      
+      // ✅ 关键修复：在播放前激活音频会话
+      try {
+        final session = await AudioSession.instance;
+        await session.setActive(true);
+        debugPrint('✅ 音频会话已激活');
+      } catch (e) {
+        debugPrint('⚠️ 激活音频会话失败: $e');
+      }
+      
+      // ✅ 关键修复：确保音量为最大值
+      await _audioPlayer!.setVolume(1.0);
+      debugPrint('🔊 设置音量为 1.0');
+      
       await _audioPlayer!.setUrl(url);
       debugPrint('🎵 URL 加载成功，持续时间: ${_audioPlayer!.duration}');
-      _audioPlayer!.play();
+      await _audioPlayer!.play();
       debugPrint('🎵 播放命令已发送');
     } catch (e, stackTrace) {
       debugPrint('❌ 播放 URL 失败: $e');
