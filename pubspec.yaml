@@ -17,6 +17,7 @@ dependencies:
   # 音频播放
   just_audio: ^0.9.46
   audio_service: ^0.18.15
+  audio_session: ^0.1.18
   
   # 状态管理
   provider: ^6.1.1

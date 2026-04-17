@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:audio_session/audio_session.dart';
 import 'audio_player_base.dart';
 import '../models/media_file.dart';
 
@@ -31,6 +32,11 @@ class AudioPlayerService extends AudioPlayerServiceBase {
 
   Future<void> _initialize() async {
     try {
+      // 配置音频会话（关键修复）
+      final session = await AudioSession.instance;
+      await session.configure(const AudioSessionConfiguration.music());
+      debugPrint('✅ 音频会话配置成功');
+      
       _audioPlayer = AudioPlayer();
       _setupListeners();
       _isInitialized = true;
