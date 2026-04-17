@@ -717,44 +717,22 @@ class AppProvider extends ChangeNotifier {
 
   /// 等待播放器就绪（解决首次播放无声问题）
   Future<bool> _waitForPlayerReady({Duration timeout = const Duration(seconds: 10)}) async {
-    final completer = Completer<bool>();
+    final startTime = DateTime.now();
     
-    // 设置超时
-    Future.delayed(timeout, () {
-      if (!completer.isCompleted) {
-        debugPrint('⚠️ 等待播放器就绪超时');
-        completer.complete(false);
+    // 轮询检查播放器状态
+    while (DateTime.now().difference(startTime) < timeout) {
+      // 直接检查播放器的实际状态
+      if (_audioPlayerService.isPlaying && _audioPlayerService.currentPosition > Duration.zero) {
+        debugPrint('✅ 播放器已就绪 (位置: ${_audioPlayerService.currentPosition})');
+        return true;
       }
-    });
-    
-    // 监听播放器状态流
-    final subscription = _audioPlayerService.playbackStateStream.listen((state) {
-      debugPrint('🎵 播放器状态: $state, isPlaying: ${_audioPlayerService.isPlaying}');
       
-      // 当状态为 playing 且播放器实际在播放时，认为已就绪
-      if (state == PlayerState.playing && _audioPlayerService.isPlaying) {
-        if (!completer.isCompleted) {
-          debugPrint('✅ 播放器已就绪');
-          completer.complete(true);
-        }
-      } else if (state == PlayerState.completed || state == PlayerState.idle) {
-        // 如果状态变为完成或空闲，说明播放失败
-        if (!completer.isCompleted) {
-          debugPrint('❌ 播放器状态异常: $state');
-          completer.complete(false);
-        }
-      }
-    });
-    
-    try {
-      final result = await completer.future;
-      subscription.cancel();
-      return result;
-    } catch (e) {
-      debugPrint('❌ 等待播放器就绪异常: $e');
-      subscription.cancel();
-      return false;
+      // 短暂等待后再次检查
+      await Future.delayed(const Duration(milliseconds: 200));
     }
+    
+    debugPrint('⚠️ 等待播放器就绪超时 (${timeout.inSeconds}秒)');
+    return false;
   }
 
   Future<void> togglePlayPause() async {
@@ -1163,6 +1141,8 @@ class AppProvider extends ChangeNotifier {
     super.dispose();
   }
 }
+
+
 
 
 
