@@ -248,15 +248,17 @@ class AudioPlayerService extends AudioPlayerServiceBase {
   @override
   Future<void> pause() async {
     if (!_isInitialized || _audioPlayer == null) return;
-    await _audioPlayer!.pause();
     
-    // ✅ 修复：手动触发状态更新，确保监听器能收到事件
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (!playbackStateController.isClosed && _audioPlayer != null) {
-        playbackStateController.add(PlayerState.paused);
-        debugPrint('📻 手动触发暂停状态: paused');
-      }
-    });
+    debugPrint('⏸️ 调用 just_audio.pause()...');
+    await _audioPlayer!.pause();
+    debugPrint('✅ just_audio.pause() 调用完成, playing=${_audioPlayer!.playing}');
+    
+    // ✅ 关键修复：立即手动触发状态更新，不依赖 playerStateStream
+    // 因为 just_audio 的 pause() 可能不会立即触发 stream 事件
+    if (!playbackStateController.isClosed && _audioPlayer != null) {
+      playbackStateController.add(PlayerState.paused);
+      debugPrint('📻 强制广播暂停状态到 Stream');
+    }
   }
 
   @override
