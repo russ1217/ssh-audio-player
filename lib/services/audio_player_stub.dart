@@ -25,6 +25,12 @@ class AudioPlayerService extends AudioPlayerServiceBase {
     _initialize();
   }
 
+  @override
+  Future<void> ensureInitialized() async {
+    // Linux平台不需要初始化，直接返回
+    _isInitialized = true;
+  }
+
   Future<void> _initialize() async {
     debugPrint('⚠️ Linux 平台不支持音频播放');
     _isInitialized = false;

@@ -1,18 +1,25 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:just_audio/just_audio.dart';
+import 'package:just_audio/just_audio.dart' as just_audio;
 import 'package:audio_session/audio_session.dart';
 import 'audio_player_base.dart';
 import '../models/media_file.dart';
 
 class AudioPlayerService extends AudioPlayerServiceBase {
-  AudioPlayer? _audioPlayer;
+  just_audio.AudioPlayer? _audioPlayer;
   bool _isInitialized = false;
 
-  final ConcatenatingAudioSource _playlist = ConcatenatingAudioSource(
+  final just_audio.ConcatenatingAudioSource _playlist = just_audio.ConcatenatingAudioSource(
     children: [],
   );
+
+  // Stream controllers for broadcasting state
+  late final StreamController<PlayerState> playbackStateController;
+  late final StreamController<Duration> positionController;
+  late final StreamController<Duration> durationController;
+  late final StreamController<int> currentIndexController;
+  late final StreamController<void> completeController;
 
   @override
   Duration get currentPosition => _audioPlayer?.position ?? Duration.zero;
@@ -27,6 +34,13 @@ class AudioPlayerService extends AudioPlayerServiceBase {
   bool get isInitialized => _isInitialized;
 
   AudioPlayerService() {
+    // Initialize stream controllers
+    playbackStateController = StreamController<PlayerState>.broadcast();
+    positionController = StreamController<Duration>.broadcast();
+    durationController = StreamController<Duration>.broadcast();
+    currentIndexController = StreamController<int>.broadcast();
+    completeController = StreamController<void>.broadcast();
+    
     _initialize();
   }
 
@@ -39,7 +53,7 @@ class AudioPlayerService extends AudioPlayerServiceBase {
       await session.configure(const AudioSessionConfiguration.music());
       print('✅ 音频会话配置成功');
       
-      _audioPlayer = AudioPlayer();
+      _audioPlayer = just_audio.AudioPlayer();
       _setupListeners();
       
       // ✅ 关键修复：加载一个极短的静音文件，触发底层引擎完整初始化
@@ -53,7 +67,7 @@ class AudioPlayerService extends AudioPlayerServiceBase {
         subscription = _audioPlayer!.processingStateStream.listen((state) {
           print('📊 初始化状态: $state');
           // 只要状态从 idle 变为其他状态，就说明引擎已就绪
-          if (state != ProcessingState.idle && !completer.isCompleted) {
+          if (state != just_audio.ProcessingState.idle && !completer.isCompleted) {
             print('✅ AudioPlayer 底层引擎已就绪: $state');
             completer.complete();
           }
@@ -105,16 +119,17 @@ class AudioPlayerService extends AudioPlayerServiceBase {
     // 主要状态监听器 - 广播播放器状态
     _audioPlayer!.playerStateStream.listen((state) {
       final playerState = switch (state.processingState) {
-        ProcessingState.idle => PlayerState.idle,
-        ProcessingState.loading => PlayerState.loading,
-        ProcessingState.buffering => PlayerState.loading,
-        ProcessingState.ready => state.playing ? PlayerState.playing : PlayerState.paused,
-        ProcessingState.completed => PlayerState.completed,
+        just_audio.ProcessingState.idle => PlayerState.idle,
+        just_audio.ProcessingState.loading => PlayerState.loading,
+        just_audio.ProcessingState.buffering => PlayerState.loading,
+        just_audio.ProcessingState.ready => state.playing ? PlayerState.playing : PlayerState.paused,
+        just_audio.ProcessingState.completed => PlayerState.completed,
+        _ => PlayerState.idle, // 默认情况，处理未知状态
       };
       
       // 关键修复：将状态广播到 StreamController
-      if (!_playbackStateController.isClosed) {
-        _playbackStateController.add(playerState);
+      if (!playbackStateController.isClosed) {
+        playbackStateController.add(playerState);
       }
       
       debugPrint('🎵 AudioPlayer 状态变化: processingState=${state.processingState}, playing=${state.playing} -> mapped to $playerState');
@@ -122,24 +137,24 @@ class AudioPlayerService extends AudioPlayerServiceBase {
 
     // 完成事件监听器
     _audioPlayer!.playerStateStream.listen((state) {
-      if (state.processingState == ProcessingState.completed) {
-        _completeController.add(null);
+      if (state.processingState == just_audio.ProcessingState.completed) {
+        completeController.add(null);
       }
     });
 
     _audioPlayer!.positionStream.listen((position) {
-      _positionController.add(position);
+      positionController.add(position);
     });
 
     _audioPlayer!.durationStream.listen((duration) {
       if (duration != null) {
-        _durationController.add(duration);
+        durationController.add(duration);
       }
     });
 
     _audioPlayer!.currentIndexStream.listen((index) {
       if (index != null) {
-        _currentIndexController.add(index);
+        currentIndexController.add(index);
       }
     });
   }

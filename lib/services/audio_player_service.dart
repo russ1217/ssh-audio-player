@@ -41,6 +41,12 @@ class _DesktopAudioPlayerService extends AudioPlayerServiceBase {
   }
 
   @override
+  Future<void> ensureInitialized() async {
+    // 桌面平台不需要初始化，直接返回
+    _isInitialized = true;
+  }
+
+  @override
   Future<void> playFile(String filePath, {bool isVideo = false}) async {
     debugPrint('⚠️ 桌面平台不支持播放文件: $filePath');
   }
@@ -147,6 +153,22 @@ class _MobileAudioPlayerService extends AudioPlayerServiceBase {
 
   _MobileAudioPlayerService() {
     _initialize();
+  }
+
+  @override
+  Future<void> ensureInitialized() async {
+    // 如果已经初始化，直接返回
+    if (_isInitialized) return;
+    
+    // 等待最多 5 秒
+    final timeout = DateTime.now().add(const Duration(seconds: 5));
+    while (!_isInitialized && DateTime.now().isBefore(timeout)) {
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+    
+    if (!_isInitialized) {
+      debugPrint('⚠️ 移动端音频播放器初始化超时');
+    }
   }
 
   @override
