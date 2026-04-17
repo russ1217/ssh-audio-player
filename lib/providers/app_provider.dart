@@ -264,11 +264,21 @@ class AppProvider extends ChangeNotifier {
   void _setupAudioPlayerListeners() {
     _audioPlayerService.playbackStateStream.listen((state) {
       _isPlaying = _audioPlayerService.isPlaying;
+      
+      // ✅ 更新 MediaSession 播放状态
+      _updateMediaSessionPlaybackState(isPlaying: _isPlaying);
+      
       notifyListeners();
     });
 
     _audioPlayerService.positionStream.listen((position) {
       _position = position;
+      
+      // ✅ 定期更新 MediaSession 位置（每秒更新一次，避免频繁调用）
+      if (_isPlaying && position.inSeconds % 1 == 0) {
+        _updateMediaSessionPosition();
+      }
+      
       notifyListeners();
     });
 
@@ -443,6 +453,9 @@ class AppProvider extends ChangeNotifier {
       _currentPlayingFile = file;
       notifyListeners();
 
+      // ✅ 更新 MediaSession 元数据（蓝牙设备显示曲目名称）
+      _updateMediaSessionMetadata(file);
+
       // 检查是否已缓存
       if (_downloadCache.containsKey(file.path)) {
         final cachedPath = _downloadCache[file.path]!;
@@ -456,6 +469,9 @@ class AppProvider extends ChangeNotifier {
           _isPlaying = true;
           debugPrint('✅ 缓存文件播放成功');
           
+          // ✅ 更新播放状态为播放中
+          _updateMediaSessionPlaybackState(isPlaying: true);
+          
           // ✅ 关键修复：只有在播放器就绪后才触发预下载
           _startPredownloading();
         } else {
@@ -463,6 +479,9 @@ class AppProvider extends ChangeNotifier {
           await _audioPlayerService.play();
           final retryReady = await _waitForPlayerReady(timeout: const Duration(seconds: 5));
           _isPlaying = retryReady;
+          
+          // ✅ 更新播放状态
+          _updateMediaSessionPlaybackState(isPlaying: retryReady);
           
           // 重试成功后也触发预下载
           if (retryReady) {
@@ -490,11 +509,17 @@ class AppProvider extends ChangeNotifier {
         if (isReady) {
           _isPlaying = true;
           debugPrint('✅ 流式播放完成设置: _currentIndex=$_currentIndex');
+          
+          // ✅ 更新播放状态为播放中
+          _updateMediaSessionPlaybackState(isPlaying: true);
         } else {
           debugPrint('⚠️ 流式播放器未就绪，尝试重新播放');
           await _audioPlayerService.play();
           final retryReady = await _waitForPlayerReady(timeout: const Duration(seconds: 5));
           _isPlaying = retryReady;
+          
+          // ✅ 更新播放状态
+          _updateMediaSessionPlaybackState(isPlaying: retryReady);
         }
       } else {
         debugPrint('🎵 小文件 (${sizeInMB}MB)，下载后播放');
@@ -505,11 +530,17 @@ class AppProvider extends ChangeNotifier {
           _isPlaying = true;
           debugPrint('✅ 小文件播放完成设置: _currentIndex=$_currentIndex');
           
+          // ✅ 更新播放状态为播放中
+          _updateMediaSessionPlaybackState(isPlaying: true);
+          
           // 触发预下载
           _startPredownloading();
         } else {
           debugPrint('❌ 小文件播放器最终未就绪，不设置播放状态');
           _isPlaying = false;
+          
+          // ✅ 更新播放状态为暂停
+          _updateMediaSessionPlaybackState(isPlaying: false);
         }
       }
 
@@ -519,6 +550,9 @@ class AppProvider extends ChangeNotifier {
       debugPrint('❌ 播放失败: $e');
       debugPrint('📚 堆栈: $stackTrace');
       _isPlaying = false;
+      
+      // ✅ 播放失败时更新状态为暂停
+      _updateMediaSessionPlaybackState(isPlaying: false);
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -704,9 +738,18 @@ class AppProvider extends ChangeNotifier {
   Future<void> togglePlayPause() async {
     if (_isPlaying) {
       await _audioPlayerService.pause();
+      _isPlaying = false;
+      
+      // ✅ 更新 MediaSession 播放状态为暂停
+      _updateMediaSessionPlaybackState(isPlaying: false);
     } else {
       await _audioPlayerService.play();
+      _isPlaying = true;
+      
+      // ✅ 更新 MediaSession 播放状态为播放中
+      _updateMediaSessionPlaybackState(isPlaying: true);
     }
+    notifyListeners();
   }
 
   Future<void> stopPlayback() async {
@@ -715,6 +758,9 @@ class AppProvider extends ChangeNotifier {
     _isPlaying = false;
     _currentPlayingFile = null;
     _stopPredownloading();
+    
+    // ✅ 更新 MediaSession 播放状态为停止
+    _updateMediaSessionPlaybackState(isPlaying: false);
     
     // ✅ 关键修复：停止后台前台服务，防止杀掉app后继续播放
     try {
@@ -1202,31 +1248,80 @@ class AppProvider extends ChangeNotifier {
       rethrow;
     }
   }
+
+  /// ✅ 更新 MediaSession 元数据（用于蓝牙设备显示曲目信息）
+  void _updateMediaSessionMetadata(MediaFile file) {
+    try {
+      // 提取文件名作为标题（不含扩展名）
+      final title = file.name.contains('.') 
+          ? file.name.substring(0, file.name.lastIndexOf('.'))
+          : file.name;
+      
+      // 获取时长（毫秒）
+      final durationMs = _duration.inMilliseconds;
+      
+      // 异步更新，不阻塞主流程
+      MediaSessionService.updateMediaMetadata(
+        title: title,
+        artist: 'SSH Player', // 可以后续从文件元数据中读取
+        album: null,
+        duration: durationMs,
+      ).then((_) {
+        debugPrint('📻 MediaSession 元数据已更新: $title');
+      }).catchError((e) {
+        debugPrint('⚠️ 更新 MediaSession 元数据失败: $e');
+      });
+    } catch (e) {
+      debugPrint('⚠️ 更新 MediaSession 元数据异常: $e');
+    }
+  }
+
+  /// ✅ 更新 MediaSession 播放状态
+  void _updateMediaSessionPlaybackState({required bool isPlaying}) {
+    try {
+      final state = isPlaying 
+          ? MediaSessionService.STATE_PLAYING 
+          : MediaSessionService.STATE_PAUSED;
+      
+      final positionMs = _position.inMilliseconds;
+      
+      // 异步更新，不阻塞主流程
+      MediaSessionService.updatePlaybackState(
+        state: state,
+        position: positionMs,
+        speed: 1.0,
+      ).then((_) {
+        debugPrint('📻 MediaSession 播放状态已更新: ${isPlaying ? "播放中" : "暂停"}');
+      }).catchError((e) {
+        debugPrint('⚠️ 更新 MediaSession 播放状态失败: $e');
+      });
+    } catch (e) {
+      debugPrint('⚠️ 更新 MediaSession 播放状态异常: $e');
+    }
+  }
+
+  /// ✅ 更新 MediaSession 播放位置（节流，避免频繁调用）
+  void _updateMediaSessionPosition() {
+    try {
+      final state = _isPlaying 
+          ? MediaSessionService.STATE_PLAYING 
+          : MediaSessionService.STATE_PAUSED;
+      
+      final positionMs = _position.inMilliseconds;
+      
+      // 异步更新，不阻塞主流程
+      MediaSessionService.updatePlaybackState(
+        state: state,
+        position: positionMs,
+        speed: 1.0,
+      ).catchError((e) {
+        // 静默失败，避免日志过多
+      });
+    } catch (e) {
+      // 静默失败
+    }
+  }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

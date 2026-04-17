@@ -13,6 +13,8 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private val BATTERY_CHANNEL = "com.ssh_audio_player/battery_optimization"
     private val BACKGROUND_SERVICE_CHANNEL = "com.example.player/background_service"
+    // ✅ 新增：媒体会话通道，用于更新曲目信息
+    private val MEDIA_SESSION_CHANNEL = "com.example.player/media_session"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -63,6 +65,62 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }
+        
+        // ✅ 媒体会话通道 - 用于更新蓝牙设备显示的曲目信息
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, MEDIA_SESSION_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "updateMediaMetadata" -> {
+                    try {
+                        val title = call.argument<String>("title") ?: ""
+                        val artist = call.argument<String>("artist")
+                        val album = call.argument<String>("album")
+                        val duration = call.argument<Int>("duration") ?: 0
+                        
+                        // 获取正在运行的服务实例
+                        val serviceIntent = Intent(this, BackgroundPlayerService::class.java)
+                        // 注意：这里需要通过静态方法或广播来更新服务中的 MediaSession
+                        // 简化方案：直接通过 Application Context 访问单例
+                        updateMediaSessionMetadata(title, artist, album, duration.toLong())
+                        
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("MEDIA_SESSION_ERROR", e.message, null)
+                    }
+                }
+                "updatePlaybackState" -> {
+                    try {
+                        val state = call.argument<Int>("state") ?: 0
+                        val position = call.argument<Int>("position") ?: 0
+                        val speed = call.argument<Double>("speed") ?: 1.0
+                        
+                        updateMediaSessionPlaybackState(state, position.toLong(), speed.toFloat())
+                        
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("MEDIA_SESSION_ERROR", e.message, null)
+                    }
+                }
+                else -> {
+                    result.notImplemented()
+                }
+            }
+        }
+    }
+    
+    /**
+     * ✅ 更新 MediaSession 元数据（曲目标题等）
+     */
+    private fun updateMediaSessionMetadata(title: String, artist: String?, album: String?, duration: Long) {
+        // 由于 Service 是独立组件，我们需要通过静态引用或单例模式访问
+        // 这里使用简单的方式：通过 Application 上下文保存引用
+        MediaSessionHelper.updateMetadata(title, artist, album, duration)
+    }
+    
+    /**
+     * ✅ 更新播放状态
+     */
+    private fun updateMediaSessionPlaybackState(state: Int, position: Long, speed: Float) {
+        MediaSessionHelper.updatePlaybackState(state, position, speed)
     }
 
     private fun isIgnoringBatteryOptimizations(): Boolean {
@@ -82,5 +140,20 @@ class MainActivity : FlutterActivity() {
             }
             startActivity(intent)
         }
+    }
+}
+
+/**
+ * ✅ MediaSession 辅助类，用于在 Activity 和 Service 之间共享 MediaSession
+ */
+object MediaSessionHelper {
+    var backgroundService: BackgroundPlayerService? = null
+    
+    fun updateMetadata(title: String, artist: String?, album: String?, duration: Long) {
+        backgroundService?.updateMediaMetadata(title, artist, album, duration)
+    }
+    
+    fun updatePlaybackState(state: Int, position: Long, speed: Float) {
+        backgroundService?.updatePlaybackState(state, position, speed)
     }
 }
