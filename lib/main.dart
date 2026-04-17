@@ -135,6 +135,18 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     debugPrint('🛑 应用被销毁，停止前台服务和播放器...');
     
     try {
+      // ✅ 关键修复：先获取 AppProvider 并停止音频播放
+      final context = _navigatorKey.currentContext;
+      if (context != null) {
+        try {
+          final provider = context.read<AppProvider>();
+          await provider.stopPlayback();
+          debugPrint('✅ 音频播放器已停止');
+        } catch (e) {
+          debugPrint('⚠️ 停止音频播放器失败: $e');
+        }
+      }
+      
       // 停止前台服务
       if (_isForegroundServiceRunning) {
         await BackgroundService.stop();
