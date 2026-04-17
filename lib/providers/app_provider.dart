@@ -960,12 +960,18 @@ class AppProvider extends ChangeNotifier {
   /// 获取睡眠定时器剩余时间
   Duration? get sleepTimerRemaining => _timerService.sleepTimerRemaining;
   
-  /// 获取倒计时更新流
-  Stream<Duration?> get countdownUpdateStream => _timerService.countdownUpdateStream;
+  /// 获取倒计时更新流（支持睡眠定时器和文件计数定时器）
+  Stream<TimerInfo?> get countdownUpdateStream => _timerService.countdownUpdateStream;
+  
+  /// 获取文件计数信息
+  int get playedFilesCount => _timerService.playedFilesCount;
+  int get maxFilesCount => _timerService.maxFilesCount;
+  bool get isFileCountTimerActive => _timerService.isFileCountTimerActive;
 
   void setFileCountTimer(int count) {
     _timerService.setFileCountTimer(count);
     notifyListeners();
+    debugPrint('📁 文件计数定时器已设置: $count 个文件');
   }
 
   void stopTimer() {
@@ -1069,6 +1075,8 @@ class AppProvider extends ChangeNotifier {
     super.dispose();
   }
 }
+
+
 
 
 

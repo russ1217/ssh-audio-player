@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
+import '../services/timer_service.dart';
 
 class BottomPlayerBar extends StatelessWidget {
   const BottomPlayerBar({super.key});
@@ -141,22 +142,83 @@ class BottomPlayerBar extends StatelessWidget {
                           ),
                         ),
                         // 定时器指示器
-                        StreamBuilder<Duration?>(
+                        StreamBuilder<TimerInfo?>(
                           stream: provider.countdownUpdateStream,
-                          initialData: provider.sleepTimerRemaining,
+                          initialData: provider.sleepTimerRemaining != null 
+                              ? TimerInfo.sleep(remaining: provider.sleepTimerRemaining)
+                              : null,
                           builder: (context, snapshot) {
-                            final remaining = snapshot.data;
-                            if (remaining == null || remaining <= Duration.zero) {
+                            final timerInfo = snapshot.data;
+                            if (timerInfo == null) {
                               return const SizedBox.shrink();
+                            }
+                            
+                            // 根据定时器类型显示不同的内容
+                            Widget indicator;
+                            String tooltip;
+                            
+                            if (timerInfo.type == TimerType.sleep) {
+                              // 睡眠定时器：显示倒计时
+                              final remaining = timerInfo.remaining;
+                              if (remaining == null || remaining <= Duration.zero) {
+                                return const SizedBox.shrink();
+                              }
+                              
+                              indicator = Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(
+                                    Icons.timer,
+                                    size: 14,
+                                    color: Colors.orange,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    _formatCountdown(remaining),
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.orange,
+                                    ),
+                                  ),
+                                ],
+                              );
+                              tooltip = '点击取消定时关闭';
+                            } else {
+                              // 文件计数定时器：显示进度
+                              indicator = Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(
+                                    Icons.playlist_play,
+                                    size: 14,
+                                    color: Colors.blue,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '${timerInfo.played}/${timerInfo.total}',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.blue,
+                                    ),
+                                  ),
+                                ],
+                              );
+                              tooltip = '点击取消播放N个文件后停止';
                             }
                             
                             return GestureDetector(
                               onTap: () {
                                 provider.stopTimer();
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('⏰ 定时关闭已取消'),
-                                    duration: Duration(seconds: 2),
+                                  SnackBar(
+                                    content: Text(
+                                      timerInfo.type == TimerType.sleep
+                                          ? '⏰ 定时关闭已取消'
+                                          : '📁 文件计数定时器已取消',
+                                    ),
+                                    duration: const Duration(seconds: 2),
                                   ),
                                 );
                               },
@@ -167,32 +229,18 @@ class BottomPlayerBar extends StatelessWidget {
                                   vertical: 4,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: Colors.orange.withOpacity(0.2),
+                                  color: timerInfo.type == TimerType.sleep
+                                      ? Colors.orange.withOpacity(0.2)
+                                      : Colors.blue.withOpacity(0.2),
                                   borderRadius: BorderRadius.circular(12),
                                   border: Border.all(
-                                    color: Colors.orange,
+                                    color: timerInfo.type == TimerType.sleep
+                                        ? Colors.orange
+                                        : Colors.blue,
                                     width: 1,
                                   ),
                                 ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(
-                                      Icons.timer,
-                                      size: 14,
-                                      color: Colors.orange,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      _formatCountdown(remaining),
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.orange,
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                                child: indicator,
                               ),
                             );
                           },

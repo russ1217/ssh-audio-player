@@ -14,9 +14,9 @@ class TimerService {
   final _timerCompleteController = StreamController<TimerType>.broadcast();
   Stream<TimerType> get timerCompleteStream => _timerCompleteController.stream;
   
-  // 倒计时更新流，每秒发送一次剩余时间
-  final _countdownUpdateController = StreamController<Duration?>.broadcast();
-  Stream<Duration?> get countdownUpdateStream => _countdownUpdateController.stream;
+  // 倒计时更新流，每秒发送一次剩余时间（睡眠定时器）或文件计数信息
+  final _countdownUpdateController = StreamController<TimerInfo?>.broadcast();
+  Stream<TimerInfo?> get countdownUpdateStream => _countdownUpdateController.stream;
 
   bool get isSleepTimerActive => _sleepTimer?.isActive ?? false;
   bool get isFileCountTimerActive => _maxFiles > 0;
@@ -38,17 +38,37 @@ class TimerService {
   void setFileCountTimer(int maxFiles) {
     _maxFiles = maxFiles;
     _playedFiles = 0;
+    
+    debugPrint('📁 设置文件计数定时器: 播放 $maxFiles 个文件后停止');
+    
+    // 立即发送一次当前状态
+    _countdownUpdateController.add(TimerInfo.fileCount(
+      played: _playedFiles,
+      total: _maxFiles,
+    ));
   }
 
   void clearFileCountTimer() {
     _maxFiles = 0;
     _playedFiles = 0;
+    _countdownUpdateController.add(null); // 通知 UI 清除
   }
 
   void incrementPlayedFiles() {
     _playedFiles++;
     
+    debugPrint('📁 已播放 ${_playedFiles}/${_maxFiles} 个文件');
+    
+    // 发送更新到 UI
+    if (_maxFiles > 0) {
+      _countdownUpdateController.add(TimerInfo.fileCount(
+        played: _playedFiles,
+        total: _maxFiles,
+      ));
+    }
+    
     if (_maxFiles > 0 && _playedFiles >= _maxFiles) {
+      debugPrint('📁 文件计数定时器到期，停止播放');
       _timerCompleteController.add(TimerType.fileCount);
       stop();
     }
@@ -76,7 +96,7 @@ class TimerService {
     _countdownUpdateTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       final remaining = sleepTimerRemaining;
       if (remaining != null) {
-        _countdownUpdateController.add(remaining);
+        _countdownUpdateController.add(TimerInfo.sleep(remaining: remaining));
         
         // 如果时间到了，停止更新定时器
         if (remaining <= Duration.zero) {
@@ -88,7 +108,7 @@ class TimerService {
     });
     
     // 立即发送一次当前剩余时间
-    _countdownUpdateController.add(sleepTimerRemaining);
+    _countdownUpdateController.add(TimerInfo.sleep(remaining: sleepTimerRemaining));
   }
 
   void stop() {
@@ -130,4 +150,32 @@ class TimerService {
 enum TimerType {
   sleep,
   fileCount,
+}
+
+class TimerInfo {
+  final TimerType type;
+  final Duration? remaining; // 睡眠定时器剩余时间
+  final int played; // 文件计数：已播放数量
+  final int total; // 文件计数：总数量
+
+  TimerInfo.sleep({
+    required this.remaining,
+  }) : type = TimerType.sleep,
+       played = 0,
+       total = 0;
+
+  TimerInfo.fileCount({
+    required this.played,
+    required this.total,
+  }) : type = TimerType.fileCount,
+       remaining = null;
+
+  @override
+  String toString() {
+    if (type == TimerType.sleep) {
+      return 'TimerInfo.sleep(remaining: $remaining)';
+    } else {
+      return 'TimerInfo.fileCount(played: $played, total: $total)';
+    }
+  }
 }
