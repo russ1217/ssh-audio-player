@@ -952,8 +952,16 @@ class AppProvider extends ChangeNotifier {
 
   // 定时器
   void setSleepTimer(Duration duration) {
-
+    _timerService.setSleepTimer(duration);
+    notifyListeners();
+    debugPrint('⏰ 睡眠定时器已设置: ${_formatDuration(duration)}');
   }
+  
+  /// 获取睡眠定时器剩余时间
+  Duration? get sleepTimerRemaining => _timerService.sleepTimerRemaining;
+  
+  /// 获取倒计时更新流
+  Stream<Duration?> get countdownUpdateStream => _timerService.countdownUpdateStream;
 
   void setFileCountTimer(int count) {
     _timerService.setFileCountTimer(count);
@@ -963,6 +971,15 @@ class AppProvider extends ChangeNotifier {
   void stopTimer() {
     _timerService.stop();
     notifyListeners();
+    debugPrint('⏰ 定时器已取消');
+  }
+  
+  /// 格式化时长显示
+  String _formatDuration(Duration d) {
+    if (d.inHours > 0) {
+      return '${d.inHours}小时${d.inMinutes % 60}分钟';
+    }
+    return '${d.inMinutes}分钟';
   }
 
   // 保存播放列表到数据库
@@ -1052,6 +1069,8 @@ class AppProvider extends ChangeNotifier {
     super.dispose();
   }
 }
+
+
 
 
 
