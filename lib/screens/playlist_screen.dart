@@ -264,50 +264,7 @@ class _CurrentPlaylistTab extends StatelessWidget {
 
         return Column(
           children: [
-            // Prev / Next 控制按钮
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.skip_previous, size: 32),
-                    onPressed: provider.currentIndex > 0
-                        ? () => provider.playPreviousInPlaylist()
-                        : null,
-                    tooltip: '上一曲',
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Center(
-                      child: Text(
-                        provider.currentPlayingFile != null
-                            ? '正在播放: ${provider.currentPlayingFile!.name}'
-                            : '播放列表 (${provider.playlist.length} 首)',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: provider.currentPlayingFile != null
-                              ? Theme.of(context).colorScheme.primary
-                              : Theme.of(context).colorScheme.onSurface,
-                          fontWeight: provider.currentPlayingFile != null
-                              ? FontWeight.bold
-                              : FontWeight.normal,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  IconButton(
-                    icon: const Icon(Icons.skip_next, size: 32),
-                    onPressed: provider.currentIndex < provider.playlist.length - 1
-                        ? () => provider.playNextInPlaylist()
-                        : null,
-                    tooltip: '下一曲',
-                  ),
-                ],
-              ),
-            ),
+            // ✅ 已移除：prev/next 按钮与底部播放控件重复
             const Divider(height: 1),
             // 播放列表
             Expanded(
