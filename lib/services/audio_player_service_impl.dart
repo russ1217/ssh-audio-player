@@ -89,116 +89,21 @@ class AudioPlayerService extends AudioPlayerServiceBase {
       return;
     }
     try {
-      debugPrint('🎵 开始加载文件: $filePath');
       await _audioPlayer!.setFilePath(filePath);
-      
-      // 等待播放器就绪
-      final readyCompleter = Completer<bool>();
-      StreamSubscription? subscription;
-      
-      subscription = _audioPlayer!.playerStateStream.listen((state) {
-        debugPrint('📊 播放器状态: processingState=${state.processingState}, playing=${state.playing}');
-        
-        if (state.processingState == ProcessingState.ready && state.playing) {
-          debugPrint('✅ 播放器已就绪并开始播放');
-          if (!readyCompleter.isCompleted) {
-            readyCompleter.complete(true);
-          }
-          subscription?.cancel();
-        } else if (state.processingState == ProcessingState.completed) {
-          debugPrint('⚠️ 播放器直接完成，可能文件有问题');
-          if (!readyCompleter.isCompleted) {
-            readyCompleter.complete(false);
-          }
-          subscription?.cancel();
-        }
-      });
-      
-      // 开始播放
       await _audioPlayer!.play();
-      
-      // 等待播放器就绪，最多等待10秒
-      try {
-        final success = await readyCompleter.future.timeout(
-          const Duration(seconds: 10),
-          onTimeout: () {
-            debugPrint('⏰ 播放器就绪超时');
-            subscription?.cancel();
-            return false;
-          },
-        );
-        
-        if (!success) {
-          debugPrint('❌ 播放器未能成功就绪');
-        }
-      } catch (e) {
-        debugPrint('❌ 等待播放器就绪异常: $e');
-        subscription?.cancel();
-      }
-      
     } catch (e) {
-      debugPrint('❌ 播放文件失败: $e');
-      rethrow;
+      debugPrint('播放文件失败: $e');
     }
   }
 
   @override
   Future<void> playUrl(String url, {bool isVideo = false}) async {
-    if (!_isInitialized || _audioPlayer == null) {
-      debugPrint('⚠️ 音频播放器未初始化');
-      return;
-    }
+    if (!_isInitialized || _audioPlayer == null) return;
     try {
-      debugPrint('🌐 开始加载流式URL: $url');
       await _audioPlayer!.setUrl(url);
-      
-      // 等待播放器就绪（流式播放需要更长的等待时间）
-      final readyCompleter = Completer<bool>();
-      StreamSubscription? subscription;
-      
-      subscription = _audioPlayer!.playerStateStream.listen((state) {
-        debugPrint('📊 播放器状态: processingState=${state.processingState}, playing=${state.playing}');
-        
-        if (state.processingState == ProcessingState.ready && state.playing) {
-          debugPrint('✅ 播放器已就绪并开始播放');
-          if (!readyCompleter.isCompleted) {
-            readyCompleter.complete(true);
-          }
-          subscription?.cancel();
-        } else if (state.processingState == ProcessingState.completed) {
-          debugPrint('⚠️ 播放器直接完成，可能URL有问题');
-          if (!readyCompleter.isCompleted) {
-            readyCompleter.complete(false);
-          }
-          subscription?.cancel();
-        }
-      });
-      
-      // 开始播放
       await _audioPlayer!.play();
-      
-      // 等待播放器就绪，最多等待15秒（流式播放需要更多缓冲时间）
-      try {
-        final success = await readyCompleter.future.timeout(
-          const Duration(seconds: 15),
-          onTimeout: () {
-            debugPrint('⏰ 流式播放器就绪超时');
-            subscription?.cancel();
-            return false;
-          },
-        );
-        
-        if (!success) {
-          debugPrint('❌ 流式播放器未能成功就绪');
-        }
-      } catch (e) {
-        debugPrint('❌ 等待流式播放器就绪异常: $e');
-        subscription?.cancel();
-      }
-      
     } catch (e) {
-      debugPrint('❌ 播放 URL 失败: $e');
-      rethrow;
+      debugPrint('播放 URL 失败: $e');
     }
   }
 

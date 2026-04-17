@@ -549,9 +549,24 @@ class AppProvider extends ChangeNotifier {
         debugPrint('📁 使用缓存文件: $cachedPath');
         final isVideo = file.isVideo;
         await _audioPlayerService.playFile(cachedPath, isVideo: isVideo);
-        _isPlaying = true;
+        
+        // 等待播放器就绪（解决首次播放无声问题）
+        final isReady = await _waitForPlayerReady(timeout: const Duration(seconds: 10));
+        if (isReady) {
+          _isPlaying = true;
+          debugPrint('✅ 缓存文件播放成功');
+        } else {
+          debugPrint('⚠️ 缓存文件播放失败，尝试重新播放');
+          await _audioPlayerService.play();
+          final retryReady = await _waitForPlayerReady(timeout: const Duration(seconds: 5));
+          _isPlaying = retryReady;
+        }
+        
         _isLoading = false;
         notifyListeners();
+        
+        // 触发预下载
+        _startPredownloading();
         return;
       }
 
@@ -568,13 +583,27 @@ class AppProvider extends ChangeNotifier {
         await _playMediaAfterDownload(file);
       }
 
-      _isPlaying = true;
-      debugPrint('✅ 播放完成设置: _currentIndex=$_currentIndex');
+      // 等待播放器就绪（解决首次播放无声问题）
+      final isReady = await _waitForPlayerReady(
+        timeout: sizeInMB > 50 ? const Duration(seconds: 15) : const Duration(seconds: 10)
+      );
+      
+      if (isReady) {
+        _isPlaying = true;
+        debugPrint('✅ 播放完成设置: _currentIndex=$_currentIndex');
+      } else {
+        debugPrint('⚠️ 播放器未就绪，尝试重新播放');
+        await _audioPlayerService.play();
+        final retryReady = await _waitForPlayerReady(timeout: const Duration(seconds: 5));
+        _isPlaying = retryReady;
+      }
       
       // 保存播放位置
       await _saveCurrentPlaybackPosition();
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint('❌ 播放失败: $e');
+      debugPrint('📚 堆栈: $stackTrace');
+      _isPlaying = false;
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -684,6 +713,48 @@ class AppProvider extends ChangeNotifier {
     _isPredownloading = false;
     _predownloadIndex = -1;
     _predownloadMaxIndex = 0;
+  }
+
+  /// 等待播放器就绪（解决首次播放无声问题）
+  Future<bool> _waitForPlayerReady({Duration timeout = const Duration(seconds: 10)}) async {
+    final completer = Completer<bool>();
+    
+    // 设置超时
+    Future.delayed(timeout, () {
+      if (!completer.isCompleted) {
+        debugPrint('⚠️ 等待播放器就绪超时');
+        completer.complete(false);
+      }
+    });
+    
+    // 监听播放器状态流
+    final subscription = _audioPlayerService.playbackStateStream.listen((state) {
+      debugPrint('🎵 播放器状态: $state, isPlaying: ${_audioPlayerService.isPlaying}');
+      
+      // 当状态为 playing 且播放器实际在播放时，认为已就绪
+      if (state == PlayerState.playing && _audioPlayerService.isPlaying) {
+        if (!completer.isCompleted) {
+          debugPrint('✅ 播放器已就绪');
+          completer.complete(true);
+        }
+      } else if (state == PlayerState.completed || state == PlayerState.idle) {
+        // 如果状态变为完成或空闲，说明播放失败
+        if (!completer.isCompleted) {
+          debugPrint('❌ 播放器状态异常: $state');
+          completer.complete(false);
+        }
+      }
+    });
+    
+    try {
+      final result = await completer.future;
+      subscription.cancel();
+      return result;
+    } catch (e) {
+      debugPrint('❌ 等待播放器就绪异常: $e');
+      subscription.cancel();
+      return false;
+    }
   }
 
   Future<void> togglePlayPause() async {
@@ -1092,6 +1163,12 @@ class AppProvider extends ChangeNotifier {
     super.dispose();
   }
 }
+
+
+
+
+
+
 
 
 
