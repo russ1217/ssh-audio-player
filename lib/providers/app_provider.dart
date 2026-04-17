@@ -264,17 +264,25 @@ class AppProvider extends ChangeNotifier {
 
   void _setupAudioPlayerListeners() {
     _audioPlayerService.playbackStateStream.listen((state) {
-      // ✅ 修复：始终根据播放器实际状态和进度更新 _isPlaying
-      // 智能判断：如果 state 是 playing，或者有进度前进，则认为在播放
-      final currentPosition = _audioPlayerService.currentPosition;
-      final hasProgress = currentPosition > _lastPositionForStateCheck;
-      final isActuallyPlaying = (state == PlayerState.playing) || 
-                                (hasProgress && state != PlayerState.paused && state != PlayerState.idle);
+      // ✅ 修复：只在特定状态下才更新 _isPlaying，避免覆盖手动操作
+      // 播放完成或出错时，强制更新为停止状态
+      if (state == PlayerState.completed || state == PlayerState.idle) {
+        _isPlaying = false;
+        debugPrint('📊 播放器状态变化（强制停止）: $state, isPlaying: $_isPlaying');
+      } else if (state == PlayerState.paused) {
+        // 只有明确收到 paused 状态时才更新
+        _isPlaying = false;
+        debugPrint('📊 播放器状态变化（暂停）: $state, isPlaying: $_isPlaying');
+      } else if (state == PlayerState.playing) {
+        // 只有明确收到 playing 状态时才更新
+        _isPlaying = true;
+        debugPrint('📊 播放器状态变化（播放）: $state, isPlaying: $_isPlaying');
+      } else {
+        // 其他状态（buffering, loading等）不改变 _isPlaying
+        debugPrint('📊 播放器中间状态（不更新_isPlaying）: $state, 保持 isPlaying: $_isPlaying');
+      }
       
-      _isPlaying = isActuallyPlaying;
-      _lastPositionForStateCheck = currentPosition;
-      
-      debugPrint('📊 播放器状态变化: $state, hasProgress=$hasProgress, isPlaying: $_isPlaying');
+      _lastPositionForStateCheck = _audioPlayerService.currentPosition;
       
       // ✅ 更新 MediaSession 播放状态
       _updateMediaSessionPlaybackState(isPlaying: _isPlaying);
@@ -1612,6 +1620,8 @@ class AppProvider extends ChangeNotifier {
     }
   }
 }
+
+
 
 
 
