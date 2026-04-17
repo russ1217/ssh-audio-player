@@ -32,6 +32,7 @@ class AppProvider extends ChangeNotifier {
   bool _isLoading = false;
 
   // 播放列表
+  String? _currentPlaylistId; // ✅ 当前播放列表ID，用于按列表记录断点
   List<MediaFile> _playlist = [];
   int _currentIndex = 0;
   MediaFile? _currentPlayingFile; // 当前正在播放的文件
@@ -314,130 +315,6 @@ class AppProvider extends ChangeNotifier {
   }
 
   /// 恢复上次播放位置
-  Future<void> _restoreLastPlayedPosition() async {
-    try {
-      final lastPosition = await _databaseService.getLastPlayedPosition();
-      if (lastPosition == null) {
-        debugPrint('📭 没有上次播放位置记录');
-        return;
-      }
-
-      final playlistId = lastPosition['playlistId'] as String;
-      final songIndex = lastPosition['songIndex'] as int;
-      final positionMs = lastPosition['position'] as int;
-      
-      debugPrint('🔄 发现上次播放位置: 列表=$playlistId, 索引=$songIndex, 进度=${positionMs}ms');
-      
-      // 尝试加载对应的播放列表
-      final playlists = await _databaseService.getPlaylists();
-      final playlist = playlists.firstWhere(
-        (p) => p.id == playlistId,
-        orElse: () => Playlist(id: '', name: '', createdAt: DateTime.now(), items: []),
-      );
-
-      if (playlist.items.isEmpty) {
-        debugPrint('⚠️ 播放列表为空或不存在，跳过恢复');
-        return;
-      }
-
-      if (songIndex >= 0 && songIndex < playlist.items.length) {
-        // 保存待恢复的位置信息，等待用户手动触发
-        _pendingRestoreInfo = {
-          'playlist': playlist,
-          'songIndex': songIndex,
-          'positionMs': positionMs,
-        };
-        debugPrint('✅ 已准备好恢复播放位置，等待用户操作');
-      } else {
-        debugPrint('⚠️ 歌曲索引超出范围，跳过恢复');
-      }
-    } catch (e) {
-      debugPrint('⚠️ 恢复播放位置失败: $e');
-    }
-  }
-
-  // 待恢复的播放位置信息
-  Map<String, dynamic>? _pendingRestoreInfo;
-
-  /// 获取待恢复的播放位置信息（供 UI 查询）
-  Map<String, dynamic>? get pendingRestoreInfo => _pendingRestoreInfo;
-
-  /// 清除待恢复信息
-  void clearPendingRestoreInfo() {
-    _pendingRestoreInfo = null;
-  }
-
-  /// 执行恢复播放（使用待恢复信息）
-  Future<void> restoreAndPlay() async {
-    if (_pendingRestoreInfo == null) {
-      debugPrint('⚠️ 没有待恢复的播放位置');
-      return;
-    }
-
-    try {
-      final playlistId = _pendingRestoreInfo!['playlistId'] as String;
-      final songIndex = _pendingRestoreInfo!['songIndex'] as int;
-      final positionMs = _pendingRestoreInfo!['positionMs'] as int;
-
-      debugPrint('▶️ 开始恢复播放: 列表=$playlistId, 索引=$songIndex');
-
-      // 获取播放列表
-      final playlists = await _databaseService.getPlaylists();
-      final playlist = playlists.firstWhere(
-        (p) => p.id == playlistId,
-        orElse: () => throw Exception('未找到播放列表 $playlistId'),
-      );
-
-      if (playlist.items.isEmpty) {
-        debugPrint('⚠️ 播放列表为空');
-        clearPendingRestoreInfo();
-        return;
-      }
-
-      // 如果有 SSH 配置，先连接
-      if (playlist.sshConfigSnapshot != null && playlist.sshConfigId != null) {
-        final sshConfigs = await _databaseService.getSSHConfigs();
-        final config = sshConfigs.firstWhere(
-          (c) => c.id == playlist.sshConfigId,
-          orElse: () => throw Exception('未找到 SSH 配置'),
-        );
-        
-        if (!_isSSHConnected || _activeSSHConfig?.id != config.id) {
-          await connectSSH(config);
-        }
-      }
-
-      // 加载播放列表（会自动恢复到上次的索引）
-      await loadPlaylist(playlist);
-      
-      // 验证索引有效性
-      if (songIndex >= 0 && songIndex < _playlist.length) {
-        // 播放歌曲
-        await playFromPlaylist(songIndex);
-        
-        // 等待播放器就绪后恢复进度
-        await Future.delayed(const Duration(milliseconds: 1000));
-        if (positionMs > 0) {
-          await seekTo(Duration(milliseconds: positionMs));
-          debugPrint('⏩ 恢复到进度: ${Duration(milliseconds: positionMs)}');
-        }
-      } else {
-        debugPrint('⚠️ 歌曲索引 $songIndex 超出范围，从第一个开始播放');
-        if (_playlist.isNotEmpty) {
-          await playFromPlaylist(0);
-        }
-      }
-
-      // 清除待恢复信息
-      clearPendingRestoreInfo();
-      
-      debugPrint('✅ 播放位置恢复成功');
-    } catch (e) {
-      debugPrint('❌ 恢复播放失败: $e');
-      clearPendingRestoreInfo();
-      rethrow;
-    }
-  }
 
   Future<void> addSSHConfig(SSHConfig config) async {
     await _databaseService.insertSSHConfig(config);
@@ -1084,21 +961,9 @@ class AppProvider extends ChangeNotifier {
     }
 
     try {
-      // 获取当前播放列表的 ID（如果有）
-      final playlists = await _databaseService.getPlaylists();
-      String playlistId = 'current'; // 默认使用 current
+      // ✅ 优化：直接使用当前播放列表ID，避免遍历查找
+      String playlistId = _currentPlaylistId ?? 'current';
       
-      // 查找匹配的播放列表
-      for (final playlist in playlists) {
-        final hasCurrentFile = playlist.items.any(
-          (item) => item.filePath == _currentPlayingFile!.path,
-        );
-        if (hasCurrentFile) {
-          playlistId = playlist.id;
-          break;
-        }
-      }
-
       await _databaseService.saveLastPlayedPosition(
         playlistId: playlistId,
         songIndex: _currentIndex,
@@ -1184,6 +1049,9 @@ class AppProvider extends ChangeNotifier {
 
   /// 从数据库加载播放列表
   Future<void> loadPlaylist(Playlist playlist) async {
+    // ✅ 关键修复：记录当前播放列表ID，用于查询该列表的断点
+    _currentPlaylistId = playlist.id;
+    
     // 清空当前播放列表
     _playlist.clear();
     _currentIndex = 0;
@@ -1194,59 +1062,11 @@ class AppProvider extends ChangeNotifier {
       _playlist.add(MediaFile.file(item.filePath, item.fileName));
     }
     
-    // ✅ 关键修复：检查该播放列表是否有上次播放记录
-    await _restorePlaylistPosition(playlist.id);
-    
     notifyListeners();
-    debugPrint('✅ 播放列表已加载: ${playlist.name} (${_playlist.length} 首歌曲), 当前索引=$_currentIndex');
+    debugPrint('✅ 播放列表已加载: ${playlist.name} (${_playlist.length} 首歌曲), ID=$_currentPlaylistId');
   }
 
   /// 恢复指定播放列表的上次播放位置
-  Future<void> _restorePlaylistPosition(String playlistId) async {
-    try {
-      final lastPosition = await _databaseService.getLastPlayedPosition();
-      if (lastPosition == null) {
-        debugPrint('📭 播放列表 $playlistId 没有上次播放记录，从第一个开始');
-        _currentIndex = 0;
-        return;
-      }
-
-      final savedPlaylistId = lastPosition['playlistId'] as String;
-      
-      // 只有当保存的播放列表ID与当前加载的列表ID匹配时才恢复
-      if (savedPlaylistId != playlistId) {
-        debugPrint('📭 播放列表 $playlistId 没有上次播放记录（上次播放的是 $savedPlaylistId），从第一个开始');
-        _currentIndex = 0;
-        return;
-      }
-
-      final songIndex = lastPosition['songIndex'] as int;
-      final positionMs = lastPosition['position'] as int;
-      
-      // 验证索引有效性
-      if (songIndex >= 0 && songIndex < _playlist.length) {
-        _currentIndex = songIndex;
-        
-        // ✅ 如果有进度信息，设置待恢复状态供UI显示或自动恢复
-        if (positionMs > 0) {
-          _pendingRestoreInfo = {
-            'playlistId': playlistId,
-            'songIndex': songIndex,
-            'positionMs': positionMs,
-          };
-          debugPrint('🔄 恢复播放列表 $playlistId 的上次位置: 索引=$songIndex, 进度=${positionMs}ms');
-        } else {
-          debugPrint('🔄 恢复播放列表 $playlistId 的上次索引: $songIndex（无进度信息）');
-        }
-      } else {
-        debugPrint('⚠️ 歌曲索引 $songIndex 超出范围 (0-${_playlist.length - 1})，从第一个开始');
-        _currentIndex = 0;
-      }
-    } catch (e) {
-      debugPrint('⚠️ 恢复播放列表位置失败: $e');
-      _currentIndex = 0;
-    }
-  }
 
   /// 从播放列表中播放指定索引的歌曲
   Future<void> playFromPlaylist(int index) async {
@@ -1284,7 +1104,107 @@ class AppProvider extends ChangeNotifier {
     _databaseService.close();
     super.dispose();
   }
+
+  /// 检查当前播放列表是否有上次播放位置记录
+  Future<bool> hasPendingRestoreForCurrentPlaylist() async {
+    if (_currentPlaylistId == null || _currentPlaylistId!.isEmpty) {
+      return false;
+    }
+    
+    final lastPosition = await _databaseService.getLastPlayedPosition(_currentPlaylistId!);
+    if (lastPosition == null) {
+      return false;
+    }
+    
+    // 验证索引是否有效
+    final songIndex = lastPosition['songIndex'] as int;
+    if (songIndex < 0 || songIndex >= _playlist.length) {
+      debugPrint('⚠️ 播放位置索引超出范围: $songIndex / ${_playlist.length}');
+      return false;
+    }
+    
+    return true;
+  }
+
+  /// 获取当前播放列表的待恢复信息
+  Future<Map<String, dynamic>?> getPendingRestoreInfoForCurrentPlaylist() async {
+    if (_currentPlaylistId == null || _currentPlaylistId!.isEmpty) {
+      return null;
+    }
+    
+    final lastPosition = await _databaseService.getLastPlayedPosition(_currentPlaylistId!);
+    if (lastPosition == null) {
+      return null;
+    }
+    
+    final songIndex = lastPosition['songIndex'] as int;
+    final positionMs = lastPosition['position'] as int;
+    
+    // 验证索引有效性
+    if (songIndex < 0 || songIndex >= _playlist.length) {
+      debugPrint('⚠️ 播放位置索引超出范围: $songIndex / ${_playlist.length}');
+      return null;
+    }
+    
+    return {
+      'songIndex': songIndex,
+      'positionMs': positionMs,
+    };
+  }
+
+  /// 执行恢复播放（基于当前播放列表的上次位置）
+  Future<void> restoreAndPlay() async {
+    if (_currentPlaylistId == null || _currentPlaylistId!.isEmpty) {
+      debugPrint('⚠️ 没有当前播放列表');
+      return;
+    }
+
+    try {
+      // 获取当前播放列表的上次播放位置
+      final restoreInfo = await getPendingRestoreInfoForCurrentPlaylist();
+      if (restoreInfo == null) {
+        debugPrint('⚠️ 当前播放列表没有待恢复的播放位置');
+        return;
+      }
+
+      final songIndex = restoreInfo['songIndex'] as int;
+      final positionMs = restoreInfo['positionMs'] as int;
+
+      debugPrint('▶️ 开始恢复播放: 索引=$songIndex, 进度=${positionMs}ms');
+
+      // 如果有 SSH 配置，先连接
+      if (_activeSSHConfig != null && !_isSSHConnected) {
+        await connectSSH(_activeSSHConfig!);
+      }
+
+      // 设置当前索引并播放
+      if (songIndex >= 0 && songIndex < _playlist.length) {
+        _currentIndex = songIndex;
+        
+        // 播放歌曲
+        await playFromPlaylist(songIndex);
+        
+        // 等待播放器就绪后恢复进度
+        await Future.delayed(const Duration(milliseconds: 1000));
+        if (positionMs > 0) {
+          await seekTo(Duration(milliseconds: positionMs));
+          debugPrint('⏩ 恢复到进度: ${Duration(milliseconds: positionMs)}');
+        }
+      }
+      
+      debugPrint('✅ 播放位置恢复成功');
+    } catch (e) {
+      debugPrint('❌ 恢复播放失败: $e');
+      rethrow;
+    }
+  }
 }
+
+
+
+
+
+
 
 
 

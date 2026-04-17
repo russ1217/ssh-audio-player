@@ -9,7 +9,8 @@ class DatabaseService {
   static const _playlistsKey = 'playlists';
   static const _playHistoryKey = 'play_history';
   static const _currentPlaylistKey = 'current_playlist';
-  static const _lastPlayedPositionKey = 'last_played_position'; // 上次播放位置
+  // ✅ 修改：使用播放列表ID作为前缀，支持每个列表独立记录
+  static const _lastPlayedPositionPrefix = 'last_played_position_';
 
   SharedPreferences? _prefs;
 
@@ -261,7 +262,7 @@ class DatabaseService {
 
   // ========== 上次播放位置保存和恢复 ==========
 
-  /// 保存上次播放位置
+  /// 保存指定播放列表的上次播放位置
   Future<void> saveLastPlayedPosition({
     required String playlistId,
     required int songIndex,
@@ -269,6 +270,7 @@ class DatabaseService {
     Duration? duration,
   }) async {
     final prefs = await this.prefs;
+    final key = '$_lastPlayedPositionPrefix$playlistId';
     final data = jsonEncode({
       'playlistId': playlistId,
       'songIndex': songIndex,
@@ -276,15 +278,19 @@ class DatabaseService {
       'duration': duration?.inMilliseconds,
       'savedAt': DateTime.now().toIso8601String(),
     });
-    await prefs.setString(_lastPlayedPositionKey, data);
+    await prefs.setString(key, data);
     debugPrint('💾 保存播放位置: 列表=$playlistId, 索引=$songIndex, 进度=${position.inSeconds}s');
   }
 
-  /// 获取上次播放位置
-  Future<Map<String, dynamic>?> getLastPlayedPosition() async {
+  /// 获取指定播放列表的上次播放位置
+  Future<Map<String, dynamic>?> getLastPlayedPosition(String playlistId) async {
     final prefs = await this.prefs;
-    final data = prefs.getString(_lastPlayedPositionKey);
-    if (data == null) return null;
+    final key = '$_lastPlayedPositionPrefix$playlistId';
+    final data = prefs.getString(key);
+    if (data == null) {
+      debugPrint('📭 播放列表 $playlistId 没有上次播放位置记录');
+      return null;
+    }
     
     try {
       final map = jsonDecode(data) as Map<String, dynamic>;
@@ -296,11 +302,22 @@ class DatabaseService {
     }
   }
 
-  /// 清除上次播放位置
-  Future<void> clearLastPlayedPosition() async {
+  /// 清除指定播放列表的上次播放位置
+  Future<void> clearLastPlayedPosition(String playlistId) async {
     final prefs = await this.prefs;
-    await prefs.remove(_lastPlayedPositionKey);
-    debugPrint('🗑️ 清除播放位置记录');
+    final key = '$_lastPlayedPositionPrefix$playlistId';
+    await prefs.remove(key);
+    debugPrint('🗑️ 清除播放列表 $playlistId 的播放位置记录');
+  }
+
+  /// 获取所有有播放位置记录的播放列表ID（用于调试）
+  Future<List<String>> getAllPlaylistsWithPosition() async {
+    final prefs = await this.prefs;
+    final keys = prefs.getKeys();
+    return keys
+        .where((key) => key.startsWith(_lastPlayedPositionPrefix))
+        .map((key) => key.substring(_lastPlayedPositionPrefix.length))
+        .toList();
   }
 
   Future<void> close() async {

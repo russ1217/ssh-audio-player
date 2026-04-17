@@ -39,17 +39,23 @@ class _PlaylistScreenState extends State<PlaylistScreen> with SingleTickerProvid
           ],
         ),
         actions: [
-          // 恢复上次播放位置按钮
+          // ✅ 恢复上次播放位置按钮（基于当前播放列表）
           Consumer<AppProvider>(
             builder: (context, provider, child) {
-              if (provider.pendingRestoreInfo != null) {
-                return IconButton(
-                  icon: const Icon(Icons.restore, color: Colors.orange),
-                  tooltip: '恢复上次播放位置',
-                  onPressed: () => _showRestoreDialog(context),
-                );
-              }
-              return const SizedBox.shrink();
+              return FutureBuilder<bool>(
+                future: provider.hasPendingRestoreForCurrentPlaylist(),
+                builder: (context, snapshot) {
+                  final hasRestore = snapshot.data ?? false;
+                  if (!hasRestore) {
+                    return const SizedBox.shrink();
+                  }
+                  return IconButton(
+                    icon: const Icon(Icons.restore, color: Colors.orange),
+                    tooltip: '恢复当前列表的上次播放位置',
+                    onPressed: () => _showRestoreDialog(context),
+                  );
+                },
+              );
             },
           ),
           Consumer<AppProvider>(
@@ -122,14 +128,17 @@ class _PlaylistScreenState extends State<PlaylistScreen> with SingleTickerProvid
     );
   }
 
-  void _showRestoreDialog(BuildContext context) {
+  Future<void> _showRestoreDialog(BuildContext context) async {
     final provider = context.read<AppProvider>();
-    final restoreInfo = provider.pendingRestoreInfo;
     
-    if (restoreInfo == null) return;
+    // ✅ 获取当前播放列表的待恢复信息
+    final restoreInfo = await provider.getPendingRestoreInfoForCurrentPlaylist();
     
-    final playlist = restoreInfo['playlist'] as dynamic;
+    if (restoreInfo == null || !context.mounted) return;
+    
     final songIndex = restoreInfo['songIndex'] as int;
+    final positionMs = restoreInfo['positionMs'] as int;
+    final position = Duration(milliseconds: positionMs);
     
     showDialog(
       context: context,
@@ -145,13 +154,13 @@ class _PlaylistScreenState extends State<PlaylistScreen> with SingleTickerProvid
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              '检测到上次播放记录：',
-              style: const TextStyle(fontWeight: FontWeight.bold),
+            const Text(
+              '检测到当前播放列表的上次播放记录：',
+              style: TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
-            Text('📋 播放列表: ${playlist.name}'),
             Text('🎵 歌曲位置: 第 ${songIndex + 1} 首'),
+            Text('⏱️ 播放进度: ${_formatDuration(position)}'),
             const SizedBox(height: 16),
             const Text(
               '是否恢复到上次的播放位置？',
@@ -161,11 +170,8 @@ class _PlaylistScreenState extends State<PlaylistScreen> with SingleTickerProvid
         ),
         actions: [
           TextButton(
-            onPressed: () {
-              provider.clearPendingRestoreInfo();
-              Navigator.of(ctx).pop();
-            },
-            child: const Text('忽略'),
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('取消'),
           ),
           FilledButton.icon(
             onPressed: () async {
@@ -218,6 +224,13 @@ class _PlaylistScreenState extends State<PlaylistScreen> with SingleTickerProvid
         ],
       ),
     );
+  }
+
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return '$minutes:$seconds';
   }
 }
 
