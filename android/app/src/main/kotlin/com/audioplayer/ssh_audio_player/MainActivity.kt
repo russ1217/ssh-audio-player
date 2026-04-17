@@ -133,7 +133,14 @@ class MainActivity : FlutterActivity() {
         }
         
         val filter = IntentFilter("com.audioplayer.ssh_audio_player.MEDIA_CONTROL")
-        registerReceiver(mediaControlReceiver, filter)
+        
+        // ✅ Android 14+ (API 34+) 要求指定 RECEIVER_EXPORTED 或 RECEIVER_NOT_EXPORTED
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(mediaControlReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(mediaControlReceiver, filter)
+        }
+        
         println("✅ 媒体控制广播接收器已注册")
     }
     
