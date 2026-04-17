@@ -555,18 +555,23 @@ class AppProvider extends ChangeNotifier {
         if (isReady) {
           _isPlaying = true;
           debugPrint('✅ 缓存文件播放成功');
+          
+          // ✅ 关键修复：只有在播放器就绪后才触发预下载
+          _startPredownloading();
         } else {
           debugPrint('⚠️ 缓存文件播放失败，尝试重新播放');
           await _audioPlayerService.play();
           final retryReady = await _waitForPlayerReady(timeout: const Duration(seconds: 5));
           _isPlaying = retryReady;
+          
+          // 重试成功后也触发预下载
+          if (retryReady) {
+            _startPredownloading();
+          }
         }
         
         _isLoading = false;
         notifyListeners();
-        
-        // 触发预下载
-        _startPredownloading();
         return;
       }
 
@@ -591,13 +596,24 @@ class AppProvider extends ChangeNotifier {
       if (isReady) {
         _isPlaying = true;
         debugPrint('✅ 播放完成设置: _currentIndex=$_currentIndex');
+        
+        // ✅ 关键修复：只有在播放器就绪后才触发预下载
+        // 避免预下载干扰播放器初始化
+        if (sizeInMB < 50) {
+          _startPredownloading();
+        }
       } else {
         debugPrint('⚠️ 播放器未就绪，尝试重新播放');
         await _audioPlayerService.play();
         final retryReady = await _waitForPlayerReady(timeout: const Duration(seconds: 5));
         _isPlaying = retryReady;
+        
+        // 重试成功后也触发预下载
+        if (retryReady && sizeInMB < 50) {
+          _startPredownloading();
+        }
       }
-      
+
       // 保存播放位置
       await _saveCurrentPlaybackPosition();
     } catch (e, stackTrace) {
@@ -610,7 +626,7 @@ class AppProvider extends ChangeNotifier {
     }
   }
 
-  // 小文件：下载完成后播放（同时后台预下载后续剧集）
+  // 小文件：下载完成后播放
   Future<void> _playMediaAfterDownload(MediaFile file) async {
     final fileData = await _sshService.readFile(file.path);
     final tempFile = await _createTempFile(fileData, file.name);
@@ -621,12 +637,8 @@ class AppProvider extends ChangeNotifier {
     final isVideo = file.isVideo;
     await _audioPlayerService.playFile(tempFile.path, isVideo: isVideo);
     
-    // 后台预下载后续剧集（如果当前文件小于 50MB）
-    final fileSize = file.size ?? await _sshService.getFileSize(file.path) ?? 0;
-    final sizeInMB = fileSize ~/ (1024 * 1024);
-    if (sizeInMB < 50) {
-      _startPredownloading();
-    }
+    // 注意：不在这里触发预下载，而是在 playMedia() 中等待播放器就绪后再触发
+    // 避免预下载干扰播放器初始化
   }
 
   // 大文件：真正的流式下载边下边播
@@ -1141,6 +1153,8 @@ class AppProvider extends ChangeNotifier {
     super.dispose();
   }
 }
+
+
 
 
 
