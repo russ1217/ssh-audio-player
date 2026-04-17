@@ -41,8 +41,33 @@ class AudioPlayerService extends AudioPlayerServiceBase {
       
       _audioPlayer = AudioPlayer();
       _setupListeners();
+      
+      // 关键修复：等待 AudioPlayer 真正就绪
+      print('⏳ 等待 AudioPlayer 底层引擎初始化...');
+      final completer = Completer<void>();
+      final subscription = _audioPlayer!.processingStateStream.listen((state) {
+        if (state != ProcessingState.idle) {
+          print('✅ AudioPlayer 底层引擎已就绪: $state');
+          if (!completer.isCompleted) {
+            completer.complete();
+          }
+        }
+      });
+      
+      // 设置超时
+      final timeout = Timer(const Duration(seconds: 5), () {
+        if (!completer.isCompleted) {
+          print('⚠️ AudioPlayer 初始化超时，但继续执行');
+          completer.complete();
+        }
+      });
+      
+      await completer.future;
+      subscription.cancel();
+      timeout.cancel();
+      
       _isInitialized = true;
-      print('✅ 音频播放器初始化成功');
+      print('✅ 音频播放器完全初始化成功');
     } catch (e, stackTrace) {
       print('❌ 音频播放器初始化失败: $e');
       print('堆栈: $stackTrace');
