@@ -33,17 +33,19 @@ class AudioPlayerService extends AudioPlayerServiceBase {
   Future<void> _initialize() async {
     try {
       // 配置音频会话（关键修复）
+      print('🔧 开始配置音频会话...');
       final session = await AudioSession.instance;
+      print('🔧 获取 AudioSession 实例成功');
       await session.configure(const AudioSessionConfiguration.music());
-      debugPrint('✅ 音频会话配置成功');
+      print('✅ 音频会话配置成功');
       
       _audioPlayer = AudioPlayer();
       _setupListeners();
       _isInitialized = true;
-      debugPrint('✅ 音频播放器初始化成功');
+      print('✅ 音频播放器初始化成功');
     } catch (e, stackTrace) {
-      debugPrint('❌ 音频播放器初始化失败: $e');
-      debugPrint('堆栈: $stackTrace');
+      print('❌ 音频播放器初始化失败: $e');
+      print('堆栈: $stackTrace');
       _isInitialized = false;
     }
   }
@@ -96,14 +98,29 @@ class AudioPlayerService extends AudioPlayerServiceBase {
   @override
   Future<void> playFile(String filePath, {bool isVideo = false}) async {
     if (!_isInitialized || _audioPlayer == null) {
-      debugPrint('⚠️ 音频播放器未初始化');
+      print('⚠️ 音频播放器未初始化');
       return;
     }
     try {
+      print('🎵 准备播放文件: $filePath');
+      print('🔊 当前音量: ${_audioPlayer!.volume}');
+      
+      // 确保音量为最大值
+      await _audioPlayer!.setVolume(1.0);
+      print('🔊 设置音量为 1.0');
+      
       await _audioPlayer!.setFilePath(filePath);
+      print('📁 文件路径设置成功');
+      
       await _audioPlayer!.play();
-    } catch (e) {
-      debugPrint('播放文件失败: $e');
+      print('▶️ 播放命令已发送');
+      
+      // 延迟检查播放状态
+      await Future.delayed(const Duration(milliseconds: 500));
+      print('🔍 播放状态检查 - playing: ${_audioPlayer!.playing}, position: ${_audioPlayer!.position}, volume: ${_audioPlayer!.volume}');
+    } catch (e, stackTrace) {
+      print('❌ 播放文件失败: $e');
+      print('堆栈: $stackTrace');
     }
   }
 
