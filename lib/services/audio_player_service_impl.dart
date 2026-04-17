@@ -45,6 +45,7 @@ class AudioPlayerService extends AudioPlayerServiceBase {
   void _setupListeners() {
     if (_audioPlayer == null) return;
 
+    // 主要状态监听器 - 广播播放器状态
     _audioPlayer!.playerStateStream.listen((state) {
       final playerState = switch (state.processingState) {
         ProcessingState.idle => PlayerState.idle,
@@ -53,12 +54,16 @@ class AudioPlayerService extends AudioPlayerServiceBase {
         ProcessingState.ready => state.playing ? PlayerState.playing : PlayerState.paused,
         ProcessingState.completed => PlayerState.completed,
       };
-      // Note: 这里简化了状态映射，实际可能需要更复杂的逻辑
-      if (state.playing) {
-        // 触发播放状态更新
+      
+      // 关键修复：将状态广播到 StreamController
+      if (!_playbackStateController.isClosed) {
+        _playbackStateController.add(playerState);
       }
+      
+      debugPrint('🎵 AudioPlayer 状态变化: processingState=${state.processingState}, playing=${state.playing} -> mapped to $playerState');
     });
 
+    // 完成事件监听器
     _audioPlayer!.playerStateStream.listen((state) {
       if (state.processingState == ProcessingState.completed) {
         _completeController.add(null);
