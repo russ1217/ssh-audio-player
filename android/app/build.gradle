@@ -66,4 +66,6 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.3'
+    // ✅ 添加MediaStyle支持库
+    implementation 'androidx.media:media:1.7.0'
 }

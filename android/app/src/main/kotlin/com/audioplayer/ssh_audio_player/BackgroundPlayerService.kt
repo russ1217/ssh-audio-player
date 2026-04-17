@@ -58,7 +58,7 @@ class BackgroundPlayerService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // Start Foreground with Notification
-        val notification = buildMediaStyleNotification()
+        val notification = buildMediaStyleNotification().build()
         startForeground(NOTIFICATION_ID, notification)
         
         // Keep CPU on indefinitely (until service is stopped)
@@ -218,12 +218,7 @@ class BackgroundPlayerService : Service() {
             .setContentIntent(pendingIntent)
             .setOngoing(true) // 设置为持续通知，防止被清除
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC) // 锁屏可见
-            .setStyle(
-                androidx.media.app.NotificationCompat.MediaStyle()
-                    .setShowActionsInCompactView(0, 1, 2) // 在紧凑视图中显示前3个动作
-                    .setMediaSession(mediaSession?.sessionToken) // 关联 MediaSession
-            )
-            // ✅ 添加媒体控制按钮
+            // ✅ 添加媒体控制按钮 (标准通知样式)
             .addAction(
                 android.R.drawable.ic_media_previous,
                 "Previous",
