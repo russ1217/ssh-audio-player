@@ -257,13 +257,23 @@ class SettingsScreen extends StatelessWidget {
           const Divider(),
           Consumer<AppProvider>(
             builder: (context, provider, child) {
-              return ListTile(
-                leading: const Icon(Icons.delete_sweep),
-                title: const Text('清除缓存'),
-                subtitle: Text('当前缓存: ${provider.cacheFileCount} 个文件'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  _showClearCacheDialog(context);
+              return FutureBuilder<int>(
+                future: provider.getCacheSize(),
+                builder: (context, snapshot) {
+                  final cacheSize = snapshot.data ?? 0;
+                  final cacheSizeText = cacheSize > 0 
+                      ? '${provider.cacheFileCount} 个文件 (${_formatFileSize(cacheSize)})'
+                      : '${provider.cacheFileCount} 个文件';
+                  
+                  return ListTile(
+                    leading: const Icon(Icons.delete_sweep),
+                    title: const Text('清除缓存'),
+                    subtitle: Text('当前缓存: $cacheSizeText'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () {
+                      _showClearCacheDialog(context);
+                    },
+                  );
                 },
               );
             },
@@ -287,11 +297,37 @@ class SettingsScreen extends StatelessWidget {
   }
 
   void _showClearCacheDialog(BuildContext context) {
+    final provider = context.read<AppProvider>();
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('清除缓存'),
-        content: const Text('确定要清除所有下载缓存吗？这将释放磁盘空间，但下次播放需要重新下载。'),
+        content: FutureBuilder<int>(
+          future: provider.getCacheSize(),
+          builder: (context, snapshot) {
+            final cacheSize = snapshot.data ?? 0;
+            final sizeText = cacheSize > 0 ? _formatFileSize(cacheSize) : '0 B';
+            
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('当前缓存: ${provider.cacheFileCount} 个文件 ($sizeText)'),
+                const SizedBox(height: 16),
+                const Text(
+                  '清除后将释放磁盘空间，但下次播放需要重新下载。',
+                  style: TextStyle(fontSize: 13),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  '提示：包括所有临时文件和历史下载记录。',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ],
+            );
+          },
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -299,11 +335,33 @@ class SettingsScreen extends StatelessWidget {
           ),
           ElevatedButton(
             onPressed: () async {
-              await context.read<AppProvider>().clearDownloadCache();
+              // 显示加载指示器
               if (context.mounted) {
                 Navigator.pop(context);
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (ctx) => const AlertDialog(
+                    content: Row(
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(width: 20),
+                        Text('正在清除缓存...'),
+                      ],
+                    ),
+                  ),
+                );
+              }
+              
+              await provider.clearDownloadCache();
+              
+              if (context.mounted) {
+                Navigator.pop(context); // 关闭加载对话框
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('缓存已清除')),
+                  const SnackBar(
+                    content: Text('✅ 缓存已清除'),
+                    backgroundColor: Colors.green,
+                  ),
                 );
               }
             },
@@ -315,6 +373,14 @@ class SettingsScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+  
+  /// 格式化文件大小
+  String _formatFileSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
   }
 }
 
