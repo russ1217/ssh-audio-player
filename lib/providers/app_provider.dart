@@ -583,35 +583,30 @@ class AppProvider extends ChangeNotifier {
       if (sizeInMB > 50) {
         debugPrint('🎵 大文件 (${sizeInMB}MB)，使用流式下载播放');
         await _playMediaStreaming(file);
+        
+        // 流式播放需要等待就绪
+        final isReady = await _waitForPlayerReady(timeout: const Duration(seconds: 15));
+        
+        if (isReady) {
+          _isPlaying = true;
+          debugPrint('✅ 流式播放完成设置: _currentIndex=$_currentIndex');
+        } else {
+          debugPrint('⚠️ 流式播放器未就绪，尝试重新播放');
+          await _audioPlayerService.play();
+          final retryReady = await _waitForPlayerReady(timeout: const Duration(seconds: 5));
+          _isPlaying = retryReady;
+        }
       } else {
         debugPrint('🎵 小文件 (${sizeInMB}MB)，下载后播放');
+        // ✅ 关键修复：_playMediaAfterDownload 内部已经等待就绪，这里不需要再次等待
         await _playMediaAfterDownload(file);
-      }
-
-      // 等待播放器就绪（解决首次播放无声问题）
-      final isReady = await _waitForPlayerReady(
-        timeout: sizeInMB > 50 ? const Duration(seconds: 15) : const Duration(seconds: 10)
-      );
-      
-      if (isReady) {
+        
+        // 直接设置为播放状态（因为内部已等待就绪）
         _isPlaying = true;
-        debugPrint('✅ 播放完成设置: _currentIndex=$_currentIndex');
+        debugPrint('✅ 小文件播放完成设置: _currentIndex=$_currentIndex');
         
-        // ✅ 关键修复：只有在播放器就绪后才触发预下载
-        // 避免预下载干扰播放器初始化
-        if (sizeInMB < 50) {
-          _startPredownloading();
-        }
-      } else {
-        debugPrint('⚠️ 播放器未就绪，尝试重新播放');
-        await _audioPlayerService.play();
-        final retryReady = await _waitForPlayerReady(timeout: const Duration(seconds: 5));
-        _isPlaying = retryReady;
-        
-        // 重试成功后也触发预下载
-        if (retryReady && sizeInMB < 50) {
-          _startPredownloading();
-        }
+        // 触发预下载
+        _startPredownloading();
       }
 
       // 保存播放位置
@@ -637,8 +632,20 @@ class AppProvider extends ChangeNotifier {
     final isVideo = file.isVideo;
     await _audioPlayerService.playFile(tempFile.path, isVideo: isVideo);
     
-    // 注意：不在这里触发预下载，而是在 playMedia() 中等待播放器就绪后再触发
-    // 避免预下载干扰播放器初始化
+    // ✅ 关键修复：等待播放器就绪后再返回，避免上层过早触发预下载
+    debugPrint('⏳ 等待小文件播放器就绪...');
+    final isReady = await _waitForPlayerReady(timeout: const Duration(seconds: 10));
+    
+    if (isReady) {
+      debugPrint('✅ 小文件播放器已就绪');
+    } else {
+      debugPrint('⚠️ 小文件播放器未就绪，尝试重新播放');
+      await _audioPlayerService.play();
+      await _waitForPlayerReady(timeout: const Duration(seconds: 5));
+    }
+    
+    // 注意：不在这里触发预下载，而是在 playMedia() 中统一处理
+    // 确保所有播放路径的预下载时机一致
   }
 
   // 大文件：真正的流式下载边下边播
@@ -731,20 +738,63 @@ class AppProvider extends ChangeNotifier {
   Future<bool> _waitForPlayerReady({Duration timeout = const Duration(seconds: 10)}) async {
     final startTime = DateTime.now();
     
-    // 轮询检查播放器状态
-    while (DateTime.now().difference(startTime) < timeout) {
-      // 直接检查播放器的实际状态
-      if (_audioPlayerService.isPlaying && _audioPlayerService.currentPosition > Duration.zero) {
-        debugPrint('✅ 播放器已就绪 (位置: ${_audioPlayerService.currentPosition})');
-        return true;
+    // ✅ 关键修复：优先使用 processingStateStream 监听（更可靠）
+    try {
+      final completer = Completer<bool>();
+      StreamSubscription? subscription;
+      
+      subscription = _audioPlayerService.playbackStateStream.listen((state) {
+        debugPrint('📊 等待就绪 - 当前状态: $state, isPlaying: ${_audioPlayerService.isPlaying}');
+        
+        // 当状态变为 playing 且位置有进展时，认为就绪
+        if (state == PlayerState.playing && _audioPlayerService.currentPosition >= Duration.zero) {
+          if (!completer.isCompleted) {
+            debugPrint('✅ 播放器已就绪 (状态: $state, 位置: ${_audioPlayerService.currentPosition})');
+            completer.complete(true);
+          }
+        }
+      });
+      
+      // 设置超时
+      final timer = Timer(timeout, () {
+        if (!completer.isCompleted) {
+          debugPrint('⚠️ 等待播放器就绪超时 (${timeout.inSeconds}秒)，尝试兜底检查');
+          
+          // 兜底：轮询检查
+          subscription?.cancel();
+          
+          // 即使 position 为 0，只要 isPlaying 为 true 也认为成功
+          if (_audioPlayerService.isPlaying) {
+            debugPrint('✅ 兜底检查通过: isPlaying=true');
+            completer.complete(true);
+          } else {
+            completer.complete(false);
+          }
+        }
+      });
+      
+      final result = await completer.future;
+      subscription?.cancel();
+      timer.cancel();
+      return result;
+    } catch (e) {
+      debugPrint('⚠️ 监听播放状态失败: $e，使用兜底轮询');
+      
+      // 兜底方案：轮询检查
+      while (DateTime.now().difference(startTime) < timeout) {
+        // 直接检查播放器的实际状态
+        if (_audioPlayerService.isPlaying) {
+          debugPrint('✅ 播放器已就绪 (位置: ${_audioPlayerService.currentPosition})');
+          return true;
+        }
+        
+        // 短暂等待后再次检查
+        await Future.delayed(const Duration(milliseconds: 200));
       }
       
-      // 短暂等待后再次检查
-      await Future.delayed(const Duration(milliseconds: 200));
+      debugPrint('⚠️ 等待播放器就绪超时 (${timeout.inSeconds}秒)');
+      return false;
     }
-    
-    debugPrint('⚠️ 等待播放器就绪超时 (${timeout.inSeconds}秒)');
-    return false;
   }
 
   Future<void> togglePlayPause() async {
@@ -1153,32 +1203,6 @@ class AppProvider extends ChangeNotifier {
     super.dispose();
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
