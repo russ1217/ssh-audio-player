@@ -78,36 +78,52 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   /// ✅ 处理来自通知栏的媒体控制命令
   Future<void> _handleMediaControl(String action) async {
-    debugPrint('🎮 处理媒体控制命令: $action');
-    
-    // 获取 AppProvider 实例
     final context = _navigatorKey.currentContext;
     if (context == null) {
-      debugPrint('⚠️ 无法获取 context，忽略控制命令');
+      debugPrint('⚠️ 无法获取 context，忽略控制命令: $action');
       return;
     }
     
     final provider = context.read<AppProvider>();
+    final currentIsPlaying = provider.isPlaying;
+    
+    debugPrint('🎮 收到媒体控制命令: $action, 当前 isPlaying=$currentIsPlaying');
     
     switch (action) {
       case 'play':
-        if (!provider.isPlaying) {
+        // ✅ 修复：如果当前未播放，则开始播放
+        if (!currentIsPlaying) {
+          debugPrint('▶️ 执行播放操作...');
           await provider.togglePlayPause();
+          debugPrint('✅ 播放操作完成');
+        } else {
+          debugPrint('⚠️ 已经在播放中，忽略 play 命令（可能是通知未及时更新）');
         }
         break;
       case 'pause':
-        if (provider.isPlaying) {
+        // ✅ 修复：如果当前正在播放，则暂停
+        if (currentIsPlaying) {
+          debugPrint('⏸️ 执行暂停操作...');
           await provider.togglePlayPause();
+          debugPrint('✅ 暂停操作完成');
+        } else {
+          debugPrint('⚠️ 已经暂停，忽略 pause 命令（可能是通知未及时更新）');
         }
         break;
       case 'stop':
+        debugPrint('⏹️ 执行停止操作...');
         await provider.stopPlayback();
+        debugPrint('✅ 停止操作完成');
         break;
       case 'next':
+        debugPrint('⏭️ 执行下一曲操作...');
         await provider.playNextInPlaylist();
+        debugPrint('✅ 下一曲操作完成');
         break;
       case 'previous':
+        debugPrint('⏮️ 执行上一曲操作...');
         await provider.playPreviousInPlaylist();
+        debugPrint('✅ 上一曲操作完成');
         break;
       default:
         debugPrint('⚠️ 未知的媒体控制命令: $action');

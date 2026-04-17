@@ -36,6 +36,18 @@ class _DesktopAudioPlayerService extends AudioPlayerServiceBase {
   @override
   int get currentIndex => 0;
 
+  // ✅ 实现基类的抽象Stream getter（桌面平台返回空流）
+  @override
+  Stream<PlayerState> get playbackStateStream => const Stream.empty();
+  @override
+  Stream<Duration> get positionStream => const Stream.empty();
+  @override
+  Stream<Duration> get durationStream => const Stream.empty();
+  @override
+  Stream<int> get currentIndexStream => const Stream.empty();
+  @override
+  Stream<void> get completeStream => const Stream.empty();
+
   _DesktopAudioPlayerService() {
     debugPrint('⚠️ 桌面平台不支持音频播放（仅用于开发和测试 UI）');
     _isInitialized = false;
@@ -109,7 +121,7 @@ class _DesktopAudioPlayerService extends AudioPlayerServiceBase {
 
   @override
   Future<void> dispose() async {
-    closeStreams();
+    // 桌面平台不需要关闭任何资源
   }
 }
 

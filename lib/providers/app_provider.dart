@@ -47,6 +47,7 @@ class AppProvider extends ChangeNotifier {
   bool _isPlaying = false;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
+  Duration _lastPositionForStateCheck = Duration.zero; // ✅ 用于智能判断播放状态的上一次位置
 
   // Getters
   SSHService get sshService => _sshService;
@@ -263,7 +264,17 @@ class AppProvider extends ChangeNotifier {
 
   void _setupAudioPlayerListeners() {
     _audioPlayerService.playbackStateStream.listen((state) {
-      _isPlaying = _audioPlayerService.isPlaying;
+      // ✅ 修复：始终根据播放器实际状态和进度更新 _isPlaying
+      // 智能判断：如果 state 是 playing，或者有进度前进，则认为在播放
+      final currentPosition = _audioPlayerService.currentPosition;
+      final hasProgress = currentPosition > _lastPositionForStateCheck;
+      final isActuallyPlaying = (state == PlayerState.playing) || 
+                                (hasProgress && state != PlayerState.paused && state != PlayerState.idle);
+      
+      _isPlaying = isActuallyPlaying;
+      _lastPositionForStateCheck = currentPosition;
+      
+      debugPrint('📊 播放器状态变化: $state, hasProgress=$hasProgress, isPlaying: $_isPlaying');
       
       // ✅ 更新 MediaSession 播放状态
       _updateMediaSessionPlaybackState(isPlaying: _isPlaying);
@@ -570,20 +581,10 @@ class AppProvider extends ChangeNotifier {
     final isVideo = file.isVideo;
     await _audioPlayerService.playFile(tempFile.path, isVideo: isVideo);
     
-    // ✅ 关键修复：等待播放器就绪后再返回，避免上层过早触发预下载
-    debugPrint('⏳ 等待小文件播放器就绪...');
-    final isReady = await _waitForPlayerReady(timeout: const Duration(seconds: 10));
-    
-    if (isReady) {
-      debugPrint('✅ 小文件播放器已就绪');
-      return true;
-    } else {
-      debugPrint('⚠️ 小文件播放器未就绪，尝试重新播放');
-      await _audioPlayerService.play();
-      final retryReady = await _waitForPlayerReady(timeout: const Duration(seconds: 5));
-      debugPrint(retryReady ? '✅ 重试后播放器已就绪' : '❌ 重试后播放器仍未就绪');
-      return retryReady;
-    }
+    // ✅ 修复：不再等待播放器就绪，直接返回true
+    // just_audio的play()是异步的，状态会通过监听器更新
+    debugPrint('✅ 已调用 play()，等待监听器更新状态');
+    return true;
   }
 
   // 大文件：真正的流式下载边下边播
@@ -736,20 +737,20 @@ class AppProvider extends ChangeNotifier {
   }
 
   Future<void> togglePlayPause() async {
-    if (_isPlaying) {
-      await _audioPlayerService.pause();
-      _isPlaying = false;
-      
-      // ✅ 更新 MediaSession 播放状态为暂停
-      _updateMediaSessionPlaybackState(isPlaying: false);
-    } else {
-      await _audioPlayerService.play();
-      _isPlaying = true;
-      
-      // ✅ 更新 MediaSession 播放状态为播放中
-      _updateMediaSessionPlaybackState(isPlaying: true);
+    try {
+      if (_isPlaying) {
+        await _audioPlayerService.pause();
+        _isPlaying = false;
+        debugPrint('⏸️ 已调用 pause()，_isPlaying = false');
+      } else {
+        await _audioPlayerService.play();
+        _isPlaying = true;
+        debugPrint('▶️ 已调用 play()，_isPlaying = true');
+      }
+      notifyListeners();
+    } catch (e) {
+      rethrow;
     }
-    notifyListeners();
   }
 
   Future<void> stopPlayback() async {
@@ -1611,6 +1612,24 @@ class AppProvider extends ChangeNotifier {
     }
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

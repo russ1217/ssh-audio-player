@@ -2,18 +2,12 @@ import 'dart:async';
 
 /// 音频播放器抽象基类
 abstract class AudioPlayerServiceBase {
-  // Stream controllers - protected style (no underscore prefix for subclass access)
-  late final StreamController<PlayerState> playbackStateController;
-  late final StreamController<Duration> positionController;
-  late final StreamController<Duration> durationController;
-  late final StreamController<int> currentIndexController;
-  late final StreamController<void> completeController;
-
-  Stream<PlayerState> get playbackStateStream => playbackStateController.stream;
-  Stream<Duration> get positionStream => positionController.stream;
-  Stream<Duration> get durationStream => durationController.stream;
-  Stream<int> get currentIndexStream => currentIndexController.stream;
-  Stream<void> get completeStream => completeController.stream;
+  // Stream controllers - abstract getters, implemented by subclasses
+  Stream<PlayerState> get playbackStateStream;
+  Stream<Duration> get positionStream;
+  Stream<Duration> get durationStream;
+  Stream<int> get currentIndexStream;
+  Stream<void> get completeStream;
 
   bool get isInitialized;
   bool get isPlaying;
@@ -37,14 +31,6 @@ abstract class AudioPlayerServiceBase {
   Future<void> setVolume(double volume);
   Future<void> setSpeed(double speed);
   Future<void> dispose();
-
-  void closeStreams() {
-    playbackStateController.close();
-    positionController.close();
-    durationController.close();
-    currentIndexController.close();
-    completeController.close();
-  }
 }
 
 /// 播放器状态枚举

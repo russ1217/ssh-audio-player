@@ -98,6 +98,6 @@ class AudioPlayerService extends AudioPlayerServiceBase {
 
   @override
   Future<void> dispose() async {
-    closeStreams();
+    // Linux stub 不需要关闭任何资源
   }
 }

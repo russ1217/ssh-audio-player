@@ -33,6 +33,18 @@ class AudioPlayerService extends AudioPlayerServiceBase {
   @override
   bool get isInitialized => _isInitialized;
 
+  // ✅ 实现基类的抽象getter
+  @override
+  Stream<PlayerState> get playbackStateStream => playbackStateController.stream;
+  @override
+  Stream<Duration> get positionStream => positionController.stream;
+  @override
+  Stream<Duration> get durationStream => durationController.stream;
+  @override
+  Stream<int> get currentIndexStream => currentIndexController.stream;
+  @override
+  Stream<void> get completeStream => completeController.stream;
+
   AudioPlayerService() {
     // Initialize stream controllers
     playbackStateController = StreamController<PlayerState>.broadcast();
@@ -221,12 +233,30 @@ class AudioPlayerService extends AudioPlayerServiceBase {
   Future<void> play() async {
     if (!_isInitialized || _audioPlayer == null) return;
     await _audioPlayer!.play();
+    
+    // ✅ 修复：手动触发状态更新，确保监听器能收到事件
+    // just_audio的playerStateStream可能不会立即发出事件
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (!playbackStateController.isClosed && _audioPlayer != null) {
+        final state = _audioPlayer!.playing ? PlayerState.playing : PlayerState.paused;
+        playbackStateController.add(state);
+        debugPrint('📻 手动触发播放状态: $state');
+      }
+    });
   }
 
   @override
   Future<void> pause() async {
     if (!_isInitialized || _audioPlayer == null) return;
     await _audioPlayer!.pause();
+    
+    // ✅ 修复：手动触发状态更新，确保监听器能收到事件
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (!playbackStateController.isClosed && _audioPlayer != null) {
+        playbackStateController.add(PlayerState.paused);
+        debugPrint('📻 手动触发暂停状态: paused');
+      }
+    });
   }
 
   @override
@@ -293,6 +323,11 @@ class AudioPlayerService extends AudioPlayerServiceBase {
     if (_audioPlayer != null) {
       await _audioPlayer!.dispose();
     }
-    closeStreams();
+    // ✅ 关闭所有Stream controllers
+    await playbackStateController.close();
+    await positionController.close();
+    await durationController.close();
+    await currentIndexController.close();
+    await completeController.close();
   }
 }
