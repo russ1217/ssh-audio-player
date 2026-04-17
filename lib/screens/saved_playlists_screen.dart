@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
 import '../models/playlist.dart';
-import '../widgets/bottom_player_bar.dart';
 
 class SavedPlaylistsScreen extends StatefulWidget {
   const SavedPlaylistsScreen({super.key});
@@ -14,162 +13,147 @@ class SavedPlaylistsScreen extends StatefulWidget {
 class _SavedPlaylistsScreenState extends State<SavedPlaylistsScreen> {
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('已保存的播放列表'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: '刷新',
-            onPressed: () {
-              setState(() {});
-            },
-          ),
-        ],
-      ),
-      body: FutureBuilder<List<Playlist>>(
-        future: context.read<AppProvider>().databaseService.getPlaylists(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+    return FutureBuilder<List<Playlist>>(
+      future: context.read<AppProvider>().databaseService.getPlaylists(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
 
-          if (snapshot.hasError) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.error_outline, size: 64, color: Colors.red),
-                  const SizedBox(height: 16),
-                  Text('加载失败: ${snapshot.error}'),
-                ],
-              ),
-            );
-          }
-
-          final playlists = snapshot.data ?? [];
-
-          if (playlists.isEmpty) {
-            return const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.playlist_play, size: 64, color: Colors.grey),
-                  SizedBox(height: 16),
-                  Text('暂无已保存的播放列表'),
-                  SizedBox(height: 8),
-                  Text(
-                    '在播放列表页面点击保存按钮',
-                    style: TextStyle(color: Colors.grey, fontSize: 12),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: playlists.length,
-            itemBuilder: (context, index) {
-              final playlist = playlists[index];
-              return Card(
-                margin: const EdgeInsets.only(bottom: 12),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                    child: Icon(
-                      Icons.music_note,
-                      color: Theme.of(context).colorScheme.onPrimaryContainer,
-                    ),
-                  ),
-                  title: Text(
-                    playlist.name,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 4),
-                      Text('${playlist.items.length} 首歌曲'),
-                      if (playlist.sshConfigSnapshot != null && 
-                          playlist.sshConfigSnapshot!['host'] != null) ...[
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            const Icon(Icons.cloud, size: 14, color: Colors.grey),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Text(
-                                '${playlist.sshConfigSnapshot!['username']}@${playlist.sshConfigSnapshot!['host']}',
-                                style: const TextStyle(fontSize: 12, color: Colors.grey),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                      if (playlist.lastPlayed != null) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          '上次播放: ${_formatDate(playlist.lastPlayed!)}',
-                          style: const TextStyle(fontSize: 11, color: Colors.grey),
-                        ),
-                      ],
-                    ],
-                  ),
-                  trailing: PopupMenuButton<String>(
-                    onSelected: (value) => _handleMenuAction(context, playlist, value),
-                    itemBuilder: (context) => [
-                      const PopupMenuItem(
-                        value: 'load',
-                        child: Row(
-                          children: [
-                            Icon(Icons.play_arrow),
-                            SizedBox(width: 8),
-                            Text('加载并播放'),
-                          ],
-                        ),
-                      ),
-                      const PopupMenuItem(
-                        value: 'view',
-                        child: Row(
-                          children: [
-                            Icon(Icons.visibility),
-                            SizedBox(width: 8),
-                            Text('查看内容'),
-                          ],
-                        ),
-                      ),
-                      const PopupMenuItem(
-                        value: 'rename',
-                        child: Row(
-                          children: [
-                            Icon(Icons.edit),
-                            SizedBox(width: 8),
-                            Text('重命名'),
-                          ],
-                        ),
-                      ),
-                      const PopupMenuItem(
-                        value: 'delete',
-                        child: Row(
-                          children: [
-                            Icon(Icons.delete, color: Colors.red),
-                            SizedBox(width: 8),
-                            Text('删除', style: TextStyle(color: Colors.red)),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  onTap: () => _handleMenuAction(context, playlist, 'load'),
-                ),
-              );
-            },
+        if (snapshot.hasError) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.error_outline, size: 64, color: Colors.red),
+                const SizedBox(height: 16),
+                Text('加载失败: ${snapshot.error}'),
+              ],
+            ),
           );
-        },
-      ),
-      bottomNavigationBar: const BottomPlayerBar(),
+        }
+
+        final playlists = snapshot.data ?? [];
+
+        if (playlists.isEmpty) {
+          return const Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.playlist_play, size: 64, color: Colors.grey),
+                SizedBox(height: 16),
+                Text('暂无已保存的播放列表'),
+                SizedBox(height: 8),
+                Text(
+                  '在播放列表页面点击保存按钮',
+                  style: TextStyle(color: Colors.grey, fontSize: 12),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: playlists.length,
+          itemBuilder: (context, index) {
+            final playlist = playlists[index];
+            return Card(
+              margin: const EdgeInsets.only(bottom: 12),
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                  child: Icon(
+                    Icons.music_note,
+                    color: Theme.of(context).colorScheme.onPrimaryContainer,
+                  ),
+                ),
+                title: Text(
+                  playlist.name,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 4),
+                    Text('${playlist.items.length} 首歌曲'),
+                    if (playlist.sshConfigSnapshot != null && 
+                        playlist.sshConfigSnapshot!['host'] != null) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(Icons.cloud, size: 14, color: Colors.grey),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              '${playlist.sshConfigSnapshot!['username']}@${playlist.sshConfigSnapshot!['host']}',
+                              style: const TextStyle(fontSize: 12, color: Colors.grey),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    if (playlist.lastPlayed != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        '上次播放: ${_formatDate(playlist.lastPlayed!)}',
+                        style: const TextStyle(fontSize: 11, color: Colors.grey),
+                      ),
+                    ],
+                  ],
+                ),
+                trailing: PopupMenuButton<String>(
+                  onSelected: (value) => _handleMenuAction(context, playlist, value),
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'load',
+                      child: Row(
+                        children: [
+                          Icon(Icons.play_arrow),
+                          SizedBox(width: 8),
+                          Text('加载并播放'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'view',
+                      child: Row(
+                        children: [
+                          Icon(Icons.visibility),
+                          SizedBox(width: 8),
+                          Text('查看内容'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'rename',
+                      child: Row(
+                        children: [
+                          Icon(Icons.edit),
+                          SizedBox(width: 8),
+                          Text('重命名'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'delete',
+                      child: Row(
+                        children: [
+                          Icon(Icons.delete, color: Colors.red),
+                          SizedBox(width: 8),
+                          Text('删除', style: TextStyle(color: Colors.red)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                onTap: () => _handleMenuAction(context, playlist, 'load'),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
