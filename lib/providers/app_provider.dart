@@ -914,7 +914,7 @@ class AppProvider extends ChangeNotifier {
     
     _downloadCache.clear();
     
-    // 2. 清除临时目录中的所有历史文件
+    // 2. ✅ 关键修复：清除临时目录中的所有历史文件
     try {
       final tempDir = await getTemporaryDirectory();
       debugPrint('📁 扫描临时目录: ${tempDir.path}');
@@ -973,6 +973,65 @@ class AppProvider extends ChangeNotifier {
       debugPrint('⚠️ 扫描临时目录失败: $e');
     }
     
+    // 3. ✅ 新增：清除应用缓存目录（getCacheDirectory）
+    try {
+      final cacheDir = await getApplicationCacheDirectory();
+      debugPrint('📁 扫描应用缓存目录: ${cacheDir.path}');
+      
+      if (await cacheDir.exists()) {
+        final entities = await cacheDir.list(recursive: true).toList();
+        
+        for (final entity in entities) {
+          if (entity is File) {
+            try {
+              final fileSize = await entity.length();
+              totalSize += fileSize;
+              await entity.delete();
+              deletedCount++;
+              debugPrint('  📄 删除缓存目录文件: ${entity.path} (${_formatFileSize(fileSize)})');
+            } catch (e) {
+              debugPrint('⚠️ 删除缓存目录文件失败: $e');
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ 扫描应用缓存目录失败: $e');
+    }
+    
+    // 4. ✅ 新增：清除应用支持目录中的临时文件（可选，谨慎使用）
+    try {
+      final appSupportDir = await getApplicationSupportDirectory();
+      debugPrint('📁 扫描应用支持目录: ${appSupportDir.path}');
+      
+      if (await appSupportDir.exists()) {
+        // 只删除明确的临时文件，避免误删重要数据
+        final entities = await appSupportDir.list(recursive: true).toList();
+        
+        for (final entity in entities) {
+          if (entity is File) {
+            final fileName = entity.uri.pathSegments.last;
+            // 只删除明显的临时文件
+            if (fileName.startsWith('temp_') || 
+                fileName.startsWith('cache_') ||
+                fileName.endsWith('.tmp')) {
+              try {
+                final fileSize = await entity.length();
+                totalSize += fileSize;
+                await entity.delete();
+                deletedCount++;
+                debugPrint('  📄 删除支持目录临时文件: $fileName (${_formatFileSize(fileSize)})');
+              } catch (e) {
+                debugPrint('⚠️ 删除支持目录文件失败: $e');
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ 扫描应用支持目录失败: $e');
+    }
+    
     debugPrint('✅ 缓存清除完成: 删除 $deletedCount 个文件，释放 ${_formatFileSize(totalSize)} 空间');
     notifyListeners();
   }
@@ -985,9 +1044,11 @@ class AppProvider extends ChangeNotifier {
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
   }
 
-  /// 获取缓存大小
+  /// 获取缓存大小（包括所有临时文件）
   Future<int> getCacheSize() async {
     int totalSize = 0;
+    
+    // 1. 计算已追踪的缓存文件
     for (final localPath in _downloadCache.values) {
       try {
         final file = File(localPath);
@@ -998,6 +1059,104 @@ class AppProvider extends ChangeNotifier {
         debugPrint('⚠️ 获取缓存大小失败: $e');
       }
     }
+    
+    // 2. ✅ 扫描临时目录中的所有历史文件
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final entities = await tempDir.list().toList();
+      
+      for (final entity in entities) {
+        if (entity is File) {
+          final fileName = entity.uri.pathSegments.last;
+          // 匹配我们的临时文件模式
+          if (fileName.startsWith('temp_') || 
+              fileName.endsWith('.mp3') || 
+              fileName.endsWith('.mp4') || 
+              fileName.endsWith('.wav') ||
+              fileName.endsWith('.flac') ||
+              fileName.endsWith('.aac') ||
+              fileName.endsWith('.m4a')) {
+            try {
+              totalSize += await entity.length();
+            } catch (e) {
+              // 静默失败
+            }
+          }
+        } else if (entity is Directory) {
+          // 递归扫描子目录
+          try {
+            final subEntities = await entity.list().toList();
+            for (final subEntity in subEntities) {
+              if (subEntity is File) {
+                final fileName = subEntity.uri.pathSegments.last;
+                if (fileName.startsWith('temp_') || 
+                    fileName.endsWith('.mp3') || 
+                    fileName.endsWith('.mp4') || 
+                    fileName.endsWith('.wav') ||
+                    fileName.endsWith('.flac') ||
+                    fileName.endsWith('.aac') ||
+                    fileName.endsWith('.m4a')) {
+                  try {
+                    totalSize += await subEntity.length();
+                  } catch (e) {
+                    // 静默失败
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            // 静默失败
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ 扫描临时目录失败: $e');
+    }
+    
+    // 3. ✅ 新增：扫描应用缓存目录
+    try {
+      final cacheDir = await getApplicationCacheDirectory();
+      if (await cacheDir.exists()) {
+        final entities = await cacheDir.list(recursive: true).toList();
+        for (final entity in entities) {
+          if (entity is File) {
+            try {
+              totalSize += await entity.length();
+            } catch (e) {
+              // 静默失败
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ 扫描应用缓存目录失败: $e');
+    }
+    
+    // 4. ✅ 新增：扫描应用支持目录中的临时文件
+    try {
+      final appSupportDir = await getApplicationSupportDirectory();
+      if (await appSupportDir.exists()) {
+        final entities = await appSupportDir.list(recursive: true).toList();
+        for (final entity in entities) {
+          if (entity is File) {
+            final fileName = entity.uri.pathSegments.last;
+            // 只统计明显的临时文件
+            if (fileName.startsWith('temp_') || 
+                fileName.startsWith('cache_') ||
+                fileName.endsWith('.tmp')) {
+              try {
+                totalSize += await entity.length();
+              } catch (e) {
+                // 静默失败
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ 扫描应用支持目录失败: $e');
+    }
+    
     return totalSize;
   }
 
@@ -1322,6 +1481,12 @@ class AppProvider extends ChangeNotifier {
     }
   }
 }
+
+
+
+
+
+
 
 
 
