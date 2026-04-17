@@ -9,6 +9,7 @@ class DatabaseService {
   static const _playlistsKey = 'playlists';
   static const _playHistoryKey = 'play_history';
   static const _currentPlaylistKey = 'current_playlist';
+  static const _lastPlayedPositionKey = 'last_played_position'; // 上次播放位置
 
   SharedPreferences? _prefs;
 
@@ -256,6 +257,50 @@ class DatabaseService {
   Future<void> clearPlayHistory() async {
     final prefs = await this.prefs;
     await prefs.remove(_playHistoryKey);
+  }
+
+  // ========== 上次播放位置保存和恢复 ==========
+
+  /// 保存上次播放位置
+  Future<void> saveLastPlayedPosition({
+    required String playlistId,
+    required int songIndex,
+    required Duration position,
+    Duration? duration,
+  }) async {
+    final prefs = await this.prefs;
+    final data = jsonEncode({
+      'playlistId': playlistId,
+      'songIndex': songIndex,
+      'position': position.inMilliseconds,
+      'duration': duration?.inMilliseconds,
+      'savedAt': DateTime.now().toIso8601String(),
+    });
+    await prefs.setString(_lastPlayedPositionKey, data);
+    debugPrint('💾 保存播放位置: 列表=$playlistId, 索引=$songIndex, 进度=${position.inSeconds}s');
+  }
+
+  /// 获取上次播放位置
+  Future<Map<String, dynamic>?> getLastPlayedPosition() async {
+    final prefs = await this.prefs;
+    final data = prefs.getString(_lastPlayedPositionKey);
+    if (data == null) return null;
+    
+    try {
+      final map = jsonDecode(data) as Map<String, dynamic>;
+      debugPrint('📖 读取播放位置: 列表=${map['playlistId']}, 索引=${map['songIndex']}');
+      return map;
+    } catch (e) {
+      debugPrint('⚠️ 解析播放位置失败: $e');
+      return null;
+    }
+  }
+
+  /// 清除上次播放位置
+  Future<void> clearLastPlayedPosition() async {
+    final prefs = await this.prefs;
+    await prefs.remove(_lastPlayedPositionKey);
+    debugPrint('🗑️ 清除播放位置记录');
   }
 
   Future<void> close() async {

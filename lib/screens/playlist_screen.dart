@@ -39,6 +39,19 @@ class _PlaylistScreenState extends State<PlaylistScreen> with SingleTickerProvid
           ],
         ),
         actions: [
+          // 恢复上次播放位置按钮
+          Consumer<AppProvider>(
+            builder: (context, provider, child) {
+              if (provider.pendingRestoreInfo != null) {
+                return IconButton(
+                  icon: const Icon(Icons.restore, color: Colors.orange),
+                  tooltip: '恢复上次播放位置',
+                  onPressed: () => _showRestoreDialog(context),
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
           Consumer<AppProvider>(
             builder: (context, provider, child) {
               if (provider.playlist.isEmpty) {
@@ -103,6 +116,104 @@ class _PlaylistScreenState extends State<PlaylistScreen> with SingleTickerProvid
               }
             },
             child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showRestoreDialog(BuildContext context) {
+    final provider = context.read<AppProvider>();
+    final restoreInfo = provider.pendingRestoreInfo;
+    
+    if (restoreInfo == null) return;
+    
+    final playlist = restoreInfo['playlist'] as dynamic;
+    final songIndex = restoreInfo['songIndex'] as int;
+    
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.restore, color: Theme.of(ctx).colorScheme.primary),
+            const SizedBox(width: 8),
+            const Text('恢复上次播放'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '检测到上次播放记录：',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            Text('📋 播放列表: ${playlist.name}'),
+            Text('🎵 歌曲位置: 第 ${songIndex + 1} 首'),
+            const SizedBox(height: 16),
+            const Text(
+              '是否恢复到上次的播放位置？',
+              style: TextStyle(fontSize: 13),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              provider.clearPendingRestoreInfo();
+              Navigator.of(ctx).pop();
+            },
+            child: const Text('忽略'),
+          ),
+          FilledButton.icon(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              
+              // 显示加载提示
+              if (context.mounted) {
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (loadingCtx) => const AlertDialog(
+                    content: Row(
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(width: 20),
+                        Text('正在恢复播放...'),
+                      ],
+                    ),
+                  ),
+                );
+              }
+              
+              try {
+                await provider.restoreAndPlay();
+                
+                if (context.mounted) {
+                  Navigator.of(context).pop(); // 关闭加载对话框
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('✅ 已恢复到上次播放位置'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  Navigator.of(context).pop(); // 关闭加载对话框
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('❌ 恢复失败: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            },
+            icon: const Icon(Icons.play_arrow),
+            label: const Text('恢复播放'),
           ),
         ],
       ),
