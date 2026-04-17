@@ -212,9 +212,32 @@ class _MobileAudioPlayerService extends AudioPlayerServiceBase {
   void _setupListeners() {
     if (_audioPlayer == null) return;
 
+    // ✅ 关键修复：监听播放器状态变化并广播到 Stream
     _audioPlayer!.playerStateStream.listen((state) {
-      if (state.processingState == ProcessingState.completed) {
-        _completeController.add(null);
+      debugPrint('📊 just_audio 状态变化: processingState=${state.processingState}, playing=${state.playing}');
+      
+      PlayerState mappedState;
+      switch (state.processingState) {
+        case ProcessingState.idle:
+          mappedState = PlayerState.idle;
+          break;
+        case ProcessingState.loading:
+        case ProcessingState.buffering:
+          mappedState = PlayerState.loading;
+          break;
+        case ProcessingState.ready:
+          mappedState = state.playing ? PlayerState.playing : PlayerState.paused;
+          break;
+        case ProcessingState.completed:
+          mappedState = PlayerState.completed;
+          _completeController.add(null); // 保留原有的完成事件
+          break;
+      }
+      
+      // 广播状态到 Stream
+      if (!_playbackStateController.isClosed) {
+        _playbackStateController.add(mappedState);
+        debugPrint('📻 广播播放器状态: $mappedState');
       }
     });
 
@@ -316,13 +339,31 @@ class _MobileAudioPlayerService extends AudioPlayerServiceBase {
   @override
   Future<void> play() async {
     if (!_isInitialized || _audioPlayer == null) return;
+    
+    debugPrint('▶️ 调用 just_audio.play()...');
     await _audioPlayer!.play();
+    debugPrint('✅ just_audio.play() 调用完成, playing=${_audioPlayer!.playing}');
+    
+    // ✅ 立即广播播放状态
+    if (!_playbackStateController.isClosed) {
+      _playbackStateController.add(PlayerState.playing);
+      debugPrint('📻 强制广播播放状态: playing');
+    }
   }
 
   @override
   Future<void> pause() async {
     if (!_isInitialized || _audioPlayer == null) return;
+    
+    debugPrint('⏸️ 调用 just_audio.pause()...');
     await _audioPlayer!.pause();
+    debugPrint('✅ just_audio.pause() 调用完成, playing=${_audioPlayer!.playing}');
+    
+    // ✅ 立即广播暂停状态
+    if (!_playbackStateController.isClosed) {
+      _playbackStateController.add(PlayerState.paused);
+      debugPrint('📻 强制广播暂停状态: paused');
+    }
   }
 
   @override
