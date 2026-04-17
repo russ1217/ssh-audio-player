@@ -128,6 +128,10 @@ class AudioPlayerService extends AudioPlayerServiceBase {
         final session = await AudioSession.instance;
         await session.setActive(true);
         print('✅ 音频会话已激活');
+        
+        // 关键修复：等待一小段时间，确保音频会话完全激活
+        await Future.delayed(const Duration(milliseconds: 200));
+        print('⏱️ 等待音频会话完全激活');
       } catch (e) {
         print('⚠️ 激活音频会话失败: $e');
       }
