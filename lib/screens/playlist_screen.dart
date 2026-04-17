@@ -69,7 +69,6 @@ class _PlaylistScreenState extends State<PlaylistScreen> with SingleTickerProvid
           const SavedPlaylistsScreen(),
         ],
       ),
-      bottomNavigationBar: const BottomPlayerBar(),
     );
   }
 
