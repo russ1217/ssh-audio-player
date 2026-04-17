@@ -103,6 +103,16 @@ class AudioPlayerService extends AudioPlayerServiceBase {
     }
     try {
       print('🎵 准备播放文件: $filePath');
+      
+      // 关键修复：在播放前激活音频会话
+      try {
+        final session = await AudioSession.instance;
+        await session.setActive(true);
+        print('✅ 音频会话已激活');
+      } catch (e) {
+        print('⚠️ 激活音频会话失败: $e');
+      }
+      
       print('🔊 当前音量: ${_audioPlayer!.volume}');
       
       // 确保音量为最大值
