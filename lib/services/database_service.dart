@@ -107,6 +107,39 @@ class DatabaseService {
     );
   }
 
+  /// 更新播放列表的 SSH 配置信息
+  Future<void> updatePlaylistSSHConfig(String playlistId, String sshConfigId, Map<String, dynamic> sshConfigSnapshot) async {
+    final playlists = await getPlaylists();
+    final index = playlists.indexWhere((p) => p.id == playlistId);
+    if (index >= 0) {
+      playlists[index] = playlists[index].copyWith(
+        sshConfigId: sshConfigId,
+        sshConfigSnapshot: sshConfigSnapshot,
+      );
+      await _savePlaylists(playlists);
+    }
+  }
+
+  /// 获取播放列表及其关联的 SSH 配置
+  Future<Map<String, dynamic>> getPlaylistWithSSHConfig(String playlistId) async {
+    final playlists = await getPlaylists();
+    final playlist = playlists.firstWhere(
+      (p) => p.id == playlistId,
+      orElse: () => Playlist(
+        id: '',
+        name: '',
+        createdAt: DateTime.now(),
+        items: [],
+      ),
+    );
+
+    return {
+      'playlist': playlist,
+      'sshConfigId': playlist.sshConfigId,
+      'sshConfigSnapshot': playlist.sshConfigSnapshot,
+    };
+  }
+
   // ========== 播放列表项 CRUD ==========
 
   Future<List<PlaylistItem>> getPlaylistItems(String playlistId) async {

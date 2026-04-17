@@ -4,6 +4,8 @@ class Playlist {
   final DateTime createdAt;
   final List<PlaylistItem> items;
   final DateTime? lastPlayed;
+  final String? sshConfigId; // 关联的 SSH 配置 ID
+  final Map<String, dynamic>? sshConfigSnapshot; // SSH 配置的快照（包含主机、用户名等）
 
   Playlist({
     required this.id,
@@ -11,12 +13,16 @@ class Playlist {
     required this.createdAt,
     required this.items,
     this.lastPlayed,
+    this.sshConfigId,
+    this.sshConfigSnapshot,
   });
 
   Playlist copyWith({
     String? name,
     List<PlaylistItem>? items,
     DateTime? lastPlayed,
+    String? sshConfigId,
+    Map<String, dynamic>? sshConfigSnapshot,
   }) {
     return Playlist(
       id: id,
@@ -24,6 +30,8 @@ class Playlist {
       createdAt: createdAt,
       items: items ?? this.items,
       lastPlayed: lastPlayed ?? this.lastPlayed,
+      sshConfigId: sshConfigId ?? this.sshConfigId,
+      sshConfigSnapshot: sshConfigSnapshot ?? this.sshConfigSnapshot,
     );
   }
 
@@ -34,6 +42,8 @@ class Playlist {
       'createdAt': createdAt.toIso8601String(),
       'items': items.map((item) => item.toMap()).toList(),
       'lastPlayed': lastPlayed?.toIso8601String(),
+      'sshConfigId': sshConfigId,
+      'sshConfigSnapshot': sshConfigSnapshot,
     };
   }
 
@@ -46,6 +56,8 @@ class Playlist {
           .map((item) => PlaylistItem.fromMap(item as Map<String, dynamic>))
           .toList(),
       lastPlayed: map['lastPlayed'] != null ? DateTime.parse(map['lastPlayed']) : null,
+      sshConfigId: map['sshConfigId'] as String?,
+      sshConfigSnapshot: map['sshConfigSnapshot'] as Map<String, dynamic>?,
     );
   }
 }

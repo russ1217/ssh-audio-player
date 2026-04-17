@@ -718,6 +718,23 @@ class AppProvider extends ChangeNotifier {
   Future<void> savePlaylistToDatabase(String name) async {
     final playlist = await _databaseService.createPlaylist(name);
     
+    // 保存 SSH 配置快照
+    if (_activeSSHConfig != null) {
+      final sshSnapshot = {
+        'id': _activeSSHConfig!.id,
+        'host': _activeSSHConfig!.host,
+        'port': _activeSSHConfig!.port,
+        'username': _activeSSHConfig!.username,
+        // 注意：不保存密码，用户需要重新输入或使用密钥
+      };
+      
+      await _databaseService.updatePlaylistSSHConfig(
+        playlist.id,
+        _activeSSHConfig!.id,
+        sshSnapshot,
+      );
+    }
+    
     for (final file in _playlist) {
       final item = PlaylistItem(
         sshConfigId: _activeSSHConfig?.id ?? '',
@@ -727,6 +744,39 @@ class AppProvider extends ChangeNotifier {
       );
       await _databaseService.addPlaylistItem(playlist.id, item);
     }
+    
+    debugPrint('✅ 播放列表已保存: $name (${_playlist.length} 首歌曲)');
+  }
+
+  /// 从数据库加载播放列表
+  Future<void> loadPlaylist(Playlist playlist) async {
+    // 清空当前播放列表
+    _playlist.clear();
+    _currentIndex = 0;
+    _currentPlayingFile = null;
+    
+    // 将保存的播放列表项转换为 MediaFile
+    for (final item in playlist.items) {
+      _playlist.add(MediaFile.file(item.filePath, item.fileName));
+    }
+    
+    notifyListeners();
+    debugPrint('✅ 播放列表已加载: ${playlist.name} (${_playlist.length} 首歌曲)');
+  }
+
+  /// 从播放列表中播放指定索引的歌曲
+  Future<void> playFromPlaylist(int index) async {
+    if (index < 0 || index >= _playlist.length) {
+      debugPrint('❌ 无效的播放列表索引: $index');
+      return;
+    }
+    
+    _currentIndex = index;
+    final file = _playlist[index];
+    _currentPlayingFile = file;
+    
+    debugPrint('▶️ 从播放列表播放: ${file.name} (索引: $index)');
+    await playMedia(file);
   }
 
   // 辅助方法
