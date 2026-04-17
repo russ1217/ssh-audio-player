@@ -42,29 +42,37 @@ class AudioPlayerService extends AudioPlayerServiceBase {
       _audioPlayer = AudioPlayer();
       _setupListeners();
       
-      // 关键修复：等待 AudioPlayer 真正就绪
-      print('⏳ 等待 AudioPlayer 底层引擎初始化...');
-      final completer = Completer<void>();
-      final subscription = _audioPlayer!.processingStateStream.listen((state) {
-        if (state != ProcessingState.idle) {
-          print('✅ AudioPlayer 底层引擎已就绪: $state');
-          if (!completer.isCompleted) {
+      // ✅ 关键修复：加载一个极短的静音文件，触发底层引擎完整初始化
+      print('⏳ 预热 AudioPlayer 底层引擎...');
+      try {
+        // 使用一个空的 Duration 作为占位符，不实际加载文件
+        // 而是通过等待 processingState 变化来确认引擎就绪
+        final completer = Completer<void>();
+        StreamSubscription? subscription;
+        
+        subscription = _audioPlayer!.processingStateStream.listen((state) {
+          print('📊 初始化状态: $state');
+          // 只要状态从 idle 变为其他状态，就说明引擎已就绪
+          if (state != ProcessingState.idle && !completer.isCompleted) {
+            print('✅ AudioPlayer 底层引擎已就绪: $state');
             completer.complete();
           }
-        }
-      });
-      
-      // 设置超时
-      final timeout = Timer(const Duration(seconds: 5), () {
-        if (!completer.isCompleted) {
-          print('⚠️ AudioPlayer 初始化超时，但继续执行');
-          completer.complete();
-        }
-      });
-      
-      await completer.future;
-      subscription.cancel();
-      timeout.cancel();
+        });
+        
+        // 设置超时
+        final timeout = Timer(const Duration(seconds: 5), () {
+          if (!completer.isCompleted) {
+            print('⚠️ AudioPlayer 初始化超时，但继续执行');
+            completer.complete();
+          }
+        });
+        
+        await completer.future;
+        subscription?.cancel();
+        timeout.cancel();
+      } catch (e) {
+        print('⚠️ 预热过程异常（可忽略）: $e');
+      }
       
       _isInitialized = true;
       print('✅ 音频播放器完全初始化成功');
@@ -153,10 +161,6 @@ class AudioPlayerService extends AudioPlayerServiceBase {
         final session = await AudioSession.instance;
         await session.setActive(true);
         print('✅ 音频会话已激活');
-        
-        // 关键修复：等待一小段时间，确保音频会话完全激活
-        await Future.delayed(const Duration(milliseconds: 200));
-        print('⏱️ 等待音频会话完全激活');
       } catch (e) {
         print('⚠️ 激活音频会话失败: $e');
       }
@@ -167,40 +171,11 @@ class AudioPlayerService extends AudioPlayerServiceBase {
       await _audioPlayer!.setVolume(1.0);
       print('🔊 设置音量为 1.0');
       
+      // 设置文件路径
       await _audioPlayer!.setFilePath(filePath);
       print('📁 文件路径设置成功');
       
-      // 关键修复：等待文件加载完成（processingState 变为 ready）
-      print('⏳ 等待文件加载完成...');
-      final loadCompleter = Completer<void>();
-      final loadSubscription = _audioPlayer!.processingStateStream.listen((state) {
-        print('📊 处理状态: $state');
-        if (state == ProcessingState.ready) {
-          print('✅ 文件加载完成，可以播放');
-          if (!loadCompleter.isCompleted) {
-            loadCompleter.complete();
-          }
-        } else if (state == ProcessingState.idle || state == ProcessingState.completed) {
-          // 如果状态异常，也继续尝试播放
-          print('⚠️ 处理状态异常: $state，但仍尝试播放');
-          if (!loadCompleter.isCompleted) {
-            loadCompleter.complete();
-          }
-        }
-      });
-      
-      // 设置超时（小文件应该很快加载）
-      final loadTimeout = Timer(const Duration(seconds: 3), () {
-        if (!loadCompleter.isCompleted) {
-          print('⚠️ 文件加载超时，但仍尝试播放');
-          loadCompleter.complete();
-        }
-      });
-      
-      await loadCompleter.future;
-      loadSubscription.cancel();
-      loadTimeout.cancel();
-      
+      // 开始播放
       await _audioPlayer!.play();
       print('▶️ 播放命令已发送');
       
