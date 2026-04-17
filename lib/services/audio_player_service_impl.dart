@@ -170,6 +170,37 @@ class AudioPlayerService extends AudioPlayerServiceBase {
       await _audioPlayer!.setFilePath(filePath);
       print('📁 文件路径设置成功');
       
+      // 关键修复：等待文件加载完成（processingState 变为 ready）
+      print('⏳ 等待文件加载完成...');
+      final loadCompleter = Completer<void>();
+      final loadSubscription = _audioPlayer!.processingStateStream.listen((state) {
+        print('📊 处理状态: $state');
+        if (state == ProcessingState.ready) {
+          print('✅ 文件加载完成，可以播放');
+          if (!loadCompleter.isCompleted) {
+            loadCompleter.complete();
+          }
+        } else if (state == ProcessingState.idle || state == ProcessingState.completed) {
+          // 如果状态异常，也继续尝试播放
+          print('⚠️ 处理状态异常: $state，但仍尝试播放');
+          if (!loadCompleter.isCompleted) {
+            loadCompleter.complete();
+          }
+        }
+      });
+      
+      // 设置超时（小文件应该很快加载）
+      final loadTimeout = Timer(const Duration(seconds: 3), () {
+        if (!loadCompleter.isCompleted) {
+          print('⚠️ 文件加载超时，但仍尝试播放');
+          loadCompleter.complete();
+        }
+      });
+      
+      await loadCompleter.future;
+      loadSubscription.cancel();
+      loadTimeout.cancel();
+      
       await _audioPlayer!.play();
       print('▶️ 播放命令已发送');
       
