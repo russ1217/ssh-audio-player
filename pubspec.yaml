@@ -15,8 +15,8 @@ dependencies:
   dartssh2: ^2.8.2
   
   # 音频播放
-  just_audio: ^0.9.36
-  audio_service: ^0.18.12
+  just_audio: ^0.9.46
+  audio_service: ^0.18.15
   
   # 状态管理
   provider: ^6.1.1
@@ -36,6 +36,8 @@ dependencies:
   flutter_foreground_task: ^6.1.2
   rxdart: ^0.27.7
   uuid: ^4.3.3
+  flutter_local_notifications: ^17.2.4
+  url_launcher: ^6.2.5
 
 dev_dependencies:
   flutter_test:

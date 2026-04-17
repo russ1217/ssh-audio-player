@@ -198,20 +198,81 @@ class SettingsScreen extends StatelessWidget {
             },
           ),
           const Divider(),
-          ListTile(
-            leading: const Icon(Icons.timer),
-            title: const Text('定时关闭'),
-            subtitle: const Text('设置播放定时关闭'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () {
-              _showTimerDialog(context);
+          Consumer<AppProvider>(
+            builder: (context, provider, child) {
+              final isTimerActive = provider.timerService.isSleepTimerActive || 
+                                    provider.timerService.isFileCountTimerActive;
+              
+              return ListTile(
+                leading: Icon(
+                  isTimerActive ? Icons.timer : Icons.timer_outlined,
+                  color: isTimerActive ? Colors.green : null,
+                ),
+                title: const Text('定时关闭'),
+                subtitle: Text(
+                  isTimerActive 
+                    ? '定时已激活 - 点击管理或取消'
+                    : '设置播放定时关闭',
+                  style: TextStyle(
+                    color: isTimerActive ? Colors.green : null,
+                    fontWeight: isTimerActive ? FontWeight.w600 : null,
+                  ),
+                ),
+                trailing: isTimerActive
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          FilledButton.tonalIcon(
+                            onPressed: () {
+                              provider.stopTimer();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('已取消定时关闭'),
+                                  duration: Duration(seconds: 2),
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.cancel, size: 18),
+                            label: const Text('取消'),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: Colors.red.shade50,
+                              foregroundColor: Colors.red,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Icon(Icons.chevron_right),
+                        ],
+                      )
+                    : const Icon(Icons.chevron_right),
+                onTap: () {
+                  _showTimerDialog(context);
+                },
+              );
+            },
+          ),
+          const Divider(),
+          Consumer<AppProvider>(
+            builder: (context, provider, child) {
+              return ListTile(
+                leading: const Icon(Icons.delete_sweep),
+                title: const Text('清除缓存'),
+                subtitle: Text('当前缓存: ${provider.cacheFileCount} 个文件'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  _showClearCacheDialog(context);
+                },
+              );
             },
           ),
           const Divider(),
           ListTile(
             leading: const Icon(Icons.info),
             title: const Text('关于'),
-            subtitle: const Text('SSH 音频播放器 v1.0.0'),
+            subtitle: const Text('SSH Player for Russ v1.0.0'),
           ),
         ],
       ),
@@ -224,6 +285,37 @@ class SettingsScreen extends StatelessWidget {
       builder: (context) => const TimerPickerSheet(),
     );
   }
+
+  void _showClearCacheDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('清除缓存'),
+        content: const Text('确定要清除所有下载缓存吗？这将释放磁盘空间，但下次播放需要重新下载。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              await context.read<AppProvider>().clearDownloadCache();
+              if (context.mounted) {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('缓存已清除')),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+            child: const Text('清除'),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class TimerPickerSheet extends StatelessWidget {
@@ -231,6 +323,9 @@ class TimerPickerSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final provider = context.watch<AppProvider>();
+    final isTimerActive = provider.timerService.isSleepTimerActive || provider.timerService.isFileCountTimerActive;
+
     return Container(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -240,6 +335,30 @@ class TimerPickerSheet extends StatelessWidget {
             '设置定时关闭',
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
           ),
+          if (isTimerActive)
+            Container(
+              margin: const EdgeInsets.only(top: 8, bottom: 16),
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.green.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.green),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.timer, color: Colors.green, size: 16),
+                  const SizedBox(width: 8),
+                  Text(
+                    '定时已设置',
+                    style: TextStyle(
+                      color: Colors.green.shade700,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           const SizedBox(height: 16),
           Wrap(
             spacing: 8,
@@ -262,15 +381,21 @@ class TimerPickerSheet extends StatelessWidget {
             label: const Text('播放 N 个文件后关闭'),
           ),
           const SizedBox(height: 8),
-          TextButton(
-            onPressed: () {
-              context.read<AppProvider>().stopTimer();
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('已取消定时关闭')),
-              );
-            },
-            child: const Text('取消定时'),
+          TextButton.icon(
+            onPressed: isTimerActive
+                ? () {
+                    context.read<AppProvider>().stopTimer();
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('已取消定时关闭')),
+                    );
+                  }
+                : null,
+            icon: const Icon(Icons.cancel),
+            label: const Text('取消定时'),
+            style: TextButton.styleFrom(
+              foregroundColor: isTimerActive ? Colors.red : Colors.grey,
+            ),
           ),
         ],
       ),

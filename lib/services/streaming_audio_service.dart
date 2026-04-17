@@ -9,6 +9,10 @@ class StreamingAudioService {
   HttpServer? _server;
   SSHClient? _streamingSshClient; // 独立的 SSH 连接用于流式传输
   int? _port;
+  bool _isStreaming = false;
+  
+  // SSH 断开回调
+  Function()? onSshDisconnected;
 
   /// 启动流式服务并返回播放 URL
   /// [sshClient] SSH 客户端连接
@@ -48,15 +52,26 @@ class StreamingAudioService {
   /// 停止流式服务
   Future<void> stop() async {
     if (_server != null) {
-      await _server!.close(force: true);
-      _server = null;
-      debugPrint('🛑 HTTP 流式服务已停止');
+      try {
+        await _server!.close(force: true);
+        _server = null;
+        debugPrint('🛑 HTTP 流式服务已停止');
+      } catch (e) {
+        debugPrint('⚠️ 停止 HTTP 服务异常（可忽略）: $e');
+      }
     }
     if (_streamingSshClient != null) {
-      _streamingSshClient!.close();
-      _streamingSshClient = null;
-      debugPrint('🛑 流式 SSH 连接已关闭');
+      try {
+        _streamingSshClient!.close();
+        _streamingSshClient = null;
+        debugPrint('🛑 流式 SSH 连接已关闭');
+      } catch (e) {
+        // SSH 已断开时关闭会抛出异常，忽略
+        debugPrint('⚠️ 关闭流式 SSH 连接异常（SSH已断开）: $e');
+        _streamingSshClient = null;
+      }
     }
+    _isStreaming = false;
   }
 
   Future<void> _handleHttpRequest(
@@ -65,6 +80,28 @@ class StreamingAudioService {
     String remotePath,
     int? fileSize,
   ) async {
+    // 检查 SSH 连接是否还有效
+    try {
+      await sshClient.run('echo test').timeout(const Duration(seconds: 5));
+    } catch (e) {
+      debugPrint('⚠️ 流式 SSH 连接已断开，拒绝新的流式请求');
+      
+      // 通知 AppProvider SSH 已断开，触发重连
+      if (!_isStreaming && onSshDisconnected != null) {
+        _isStreaming = true; // 防止重复触发
+        onSshDisconnected!();
+      }
+      
+      request.response.statusCode = HttpStatus.serviceUnavailable;
+      request.response.headers.set(HttpHeaders.contentTypeHeader, 'text/plain');
+      request.response.write('SSH connection lost');
+      await request.response.close();
+      return;
+    }
+
+    // 重置标志，允许下次检测
+    _isStreaming = false;
+
     // 解析 Range 请求头（支持 seek）
     int startByte = 0;
     int? endByte;

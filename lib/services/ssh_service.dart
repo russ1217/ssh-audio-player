@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter/foundation.dart';
@@ -8,14 +9,124 @@ class SSHService {
   SSHClient? _client;
   SftpClient? _sftp; // 复用的 SFTP 连接
   SSHConfig? _currentConfig;
+  Timer? _heartbeatTimer;
+  
+  // 心跳检测相关
+  static const heartbeatIntervalNormal = Duration(seconds: 60);
+  static const heartbeatIntervalDisconnected = Duration(seconds: 10);
+  final _connectionStatusController = StreamController<bool>.broadcast();
+  Stream<bool> get connectionStatusStream => _connectionStatusController.stream;
 
   bool get isConnected => _client != null;
+
+  int _reconnectAttempts = 0;
+  static const maxReconnectAttempts = 5;
+
+  /// 启动心跳检测
+  void startHeartbeat() {
+    stopHeartbeat();
+    _reconnectAttempts = 0;
+    _startHeartbeatTimer(heartbeatIntervalNormal);
+  }
+
+  void _startHeartbeatTimer(Duration interval) {
+    _heartbeatTimer = Timer.periodic(interval, (_) async {
+      if (_client != null) {
+        final isConnected = await checkConnection();
+        if (!isConnected) {
+          debugPrint('⚠️ 心跳检测：SSH 连接已断开');
+          _connectionStatusController.add(false);
+
+          // 尝试自动重连（限制重试次数）
+          if (_currentConfig != null && _reconnectAttempts < maxReconnectAttempts) {
+            _reconnectAttempts++;
+            debugPrint('🔄 心跳检测：尝试自动重连 ($_reconnectAttempts/$maxReconnectAttempts)...');
+            try {
+              final reconnectSuccess = await reconnect().timeout(
+                const Duration(seconds: 20),
+                onTimeout: () {
+                  throw TimeoutException('重连超时');
+                },
+              );
+              _connectionStatusController.add(reconnectSuccess);
+              if (reconnectSuccess) {
+                debugPrint('✅ 心跳检测：自动重连成功');
+                _reconnectAttempts = 0; // 重置重试计数
+                // 重连成功后，恢复正常心跳间隔
+                _startHeartbeatTimer(heartbeatIntervalNormal);
+              } else {
+                debugPrint('❌ 心跳检测：自动重连失败');
+                // 重连失败，使用快速心跳间隔
+                if (_reconnectAttempts < maxReconnectAttempts) {
+                  _startHeartbeatTimer(heartbeatIntervalDisconnected);
+                }
+              }
+            } catch (e) {
+              debugPrint('❌ 心跳检测：重连异常 - $e');
+              _connectionStatusController.add(false);
+              // 重连异常，使用快速心跳间隔
+              if (_reconnectAttempts < maxReconnectAttempts) {
+                _startHeartbeatTimer(heartbeatIntervalDisconnected);
+              }
+            }
+          } else if (_reconnectAttempts >= maxReconnectAttempts) {
+            debugPrint('⛔ 心跳检测：已达最大重连次数，停止重试');
+            _connectionStatusController.add(false);
+            stopHeartbeat();
+          }
+        } else {
+          _reconnectAttempts = 0; // 重置重试计数
+          _connectionStatusController.add(true);
+        }
+      }
+    });
+    
+    final intervalType = interval == heartbeatIntervalNormal ? '正常' : '快速';
+    debugPrint('💓 SSH 心跳检测已启动（${intervalType}模式：${interval.inSeconds}秒，最多重试 $maxReconnectAttempts 次）');
+  }
+
+  /// 停止心跳检测
+  void stopHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+  }
+
+  /// 检查连接是否真正有效
+  Future<bool> checkConnection() async {
+    if (_client == null) return false;
+    try {
+      await _client!.run('echo ok');
+      return true;
+    } catch (e) {
+      debugPrint('⚠️ SSH 连接已断开: $e');
+      _client = null;
+      _sftp = null;
+      return false;
+    }
+  }
+
+  /// 重新连接（使用当前配置）
+  Future<bool> reconnect() async {
+    if (_currentConfig == null) return false;
+    debugPrint('🔄 正在重新连接 SSH...');
+    return connect(_currentConfig!);
+  }
 
   Future<bool> connect(SSHConfig config) async {
     try {
       await disconnect();
 
-      final socket = await SSHSocket.connect(config.host, config.port);
+      // 添加连接超时处理（15秒）
+      final socket = await SSHSocket.connect(
+        config.host,
+        config.port,
+        timeout: const Duration(seconds: 15),
+      ).timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          throw TimeoutException('SSH 连接超时');
+        },
+      );
 
       _currentConfig = config;
 
@@ -39,23 +150,33 @@ class SSHService {
         throw Exception('需要提供密码或私钥');
       }
 
-      // 测试连接
-      await _client!.run('echo ok');
-      
+      // 测试连接（带超时）
+      await _client!.run('echo ok').timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw TimeoutException('SSH 连接测试超时');
+        },
+      );
+
       // 初始化并复用 SFTP 连接
       _sftp = await _client!.sftp();
       debugPrint('🔗 SFTP 会话已建立（复用模式）');
-      
+
+      // 启动心跳检测
+      startHeartbeat();
+
       return true;
     } catch (e) {
+      debugPrint('❌ SSH 连接失败: $e');
       _client = null;
       _sftp = null;
-      _currentConfig = null;
+      // 注意：不清空 _currentConfig，因为重连需要它
       rethrow;
     }
   }
 
   Future<void> disconnect() async {
+    stopHeartbeat();
     _sftp?.close();
     _sftp = null;
     _client?.close();
@@ -239,4 +360,10 @@ class SSHService {
   }
 
   SSHConfig? get currentConfig => _currentConfig;
+
+  /// 释放资源
+  void dispose() {
+    stopHeartbeat();
+    _connectionStatusController.close();
+  }
 }
