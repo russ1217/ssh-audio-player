@@ -404,7 +404,7 @@ class AppProvider extends ChangeNotifier {
         // 等待播放器就绪后恢复进度
         await Future.delayed(const Duration(milliseconds: 1000));
         if (positionMs > 0) {
-          await seek(Duration(milliseconds: positionMs));
+          await seekTo(Duration(milliseconds: positionMs));
           debugPrint('⏩ 恢复到进度: ${Duration(milliseconds: positionMs)}');
         }
       }
@@ -1052,6 +1052,8 @@ class AppProvider extends ChangeNotifier {
     super.dispose();
   }
 }
+
+
 
 
 
