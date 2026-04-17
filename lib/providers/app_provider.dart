@@ -658,6 +658,36 @@ class AppProvider extends ChangeNotifier {
     }
   }
 
+  /// 重排播放列表（拖拽排序）
+  void reorderPlaylist(int oldIndex, int newIndex) {
+    if (oldIndex < 0 || oldIndex >= _playlist.length || 
+        newIndex < 0 || newIndex >= _playlist.length) {
+      return;
+    }
+
+    // 保存当前播放的文件
+    final wasPlayingCurrent = _currentIndex == oldIndex;
+    
+    // 移动项目
+    final item = _playlist.removeAt(oldIndex);
+    _playlist.insert(newIndex, item);
+    
+    // 更新当前播放索引
+    if (wasPlayingCurrent) {
+      _currentIndex = newIndex;
+    } else {
+      // 如果移动的项目在当前播放项之前，需要调整索引
+      if (oldIndex < _currentIndex && newIndex >= _currentIndex) {
+        _currentIndex--;
+      } else if (oldIndex > _currentIndex && newIndex <= _currentIndex) {
+        _currentIndex++;
+      }
+    }
+    
+    notifyListeners();
+    debugPrint('🔄 播放列表重排: $oldIndex -> $newIndex');
+  }
+
   /// 清除下载缓存
   Future<void> clearDownloadCache() async {
     debugPrint('🗑️ 清除下载缓存...');
