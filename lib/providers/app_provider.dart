@@ -39,6 +39,7 @@ class AppProvider extends ChangeNotifier {
   final Map<String, String> _downloadCache = {}; // 文件路径 -> 本地路径
   bool _isPredownloading = false;
   int _predownloadIndex = -1;
+  int _predownloadMaxIndex = 0; // 预下载的最大索引
 
   // 播放器状态
   bool _isPlaying = false;
@@ -618,19 +619,34 @@ class AppProvider extends ChangeNotifier {
     await _audioPlayerService.playUrl(streamUrl, isVideo: isVideo);
   }
 
-  /// 开始后台预下载
+  /// 开始后台预下载（最多预下载当前曲目后3个）
   void _startPredownloading() {
-    if (_isPredownloading) return;
-    if (_currentIndex >= _playlist.length - 1) return; // 已经是最后一个
+    if (_isPredownloading) {
+      debugPrint('⚠️ 预下载正在进行中，跳过');
+      return;
+    }
     
-    _predownloadIndex = _currentIndex + 1;
+    // 计算需要预下载的范围：从 currentIndex + 1 开始，最多3个
+    final startDownloadIndex = _currentIndex + 1;
+    final maxDownloadIndex = startDownloadIndex + 3; // 最多下载后面3个
+    
+    if (startDownloadIndex >= _playlist.length) {
+      debugPrint('✅ 已经是最后一个曲目，无需预下载');
+      return;
+    }
+    
+    _predownloadIndex = startDownloadIndex;
+    _predownloadMaxIndex = maxDownloadIndex.clamp(0, _playlist.length);
+    debugPrint('🚀 开始预下载: 索引 $_predownloadIndex 到 $_predownloadMaxIndex');
     _predownloadNext();
   }
 
-  /// 预下载下一个文件
+  /// 预下载下一个文件（限制最多3个）
   Future<void> _predownloadNext() async {
-    if (_predownloadIndex >= _playlist.length) {
+    // 检查是否超出预下载范围或播放列表范围
+    if (_predownloadIndex >= _predownloadMaxIndex || _predownloadIndex >= _playlist.length) {
       _isPredownloading = false;
+      debugPrint('✅ 预下载完成（已达到限制）');
       return;
     }
 
@@ -639,7 +655,7 @@ class AppProvider extends ChangeNotifier {
 
     // 检查是否已缓存
     if (_downloadCache.containsKey(nextFile.path)) {
-      debugPrint('✅ 文件已缓存: ${nextFile.name}');
+      debugPrint('✅ 文件已缓存: ${nextFile.name} (索引: $_predownloadIndex)');
       _predownloadIndex++;
       _isPredownloading = false;
       _predownloadNext();
@@ -647,7 +663,7 @@ class AppProvider extends ChangeNotifier {
     }
 
     try {
-      debugPrint('⬇️ 后台预下载: ${nextFile.name} (索引: $_predownloadIndex)');
+      debugPrint('⬇️ 后台预下载: ${nextFile.name} (索引: $_predownloadIndex/$_predownloadMaxIndex)');
       final fileData = await _sshService.readFile(nextFile.path);
       final tempFile = await _createTempFile(fileData, nextFile.name);
       _downloadCache[nextFile.path] = tempFile.path;
@@ -667,6 +683,7 @@ class AppProvider extends ChangeNotifier {
   void _stopPredownloading() {
     _isPredownloading = false;
     _predownloadIndex = -1;
+    _predownloadMaxIndex = 0;
   }
 
   Future<void> togglePlayPause() async {
@@ -1075,6 +1092,12 @@ class AppProvider extends ChangeNotifier {
     super.dispose();
   }
 }
+
+
+
+
+
+
 
 
 
