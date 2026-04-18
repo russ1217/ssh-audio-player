@@ -6,6 +6,28 @@ import 'audio_player_base.dart';
 class AudioPlayerService extends AudioPlayerServiceBase {
   bool _isInitialized = false;
 
+  // ✅ 关键修复：实现所有必需的Stream getters
+  final StreamController<PlayerState> _playbackStateController = StreamController<PlayerState>.broadcast();
+  final StreamController<Duration> _positionController = StreamController<Duration>.broadcast();
+  final StreamController<Duration> _durationController = StreamController<Duration>.broadcast();
+  final StreamController<int> _currentIndexController = StreamController<int>.broadcast();
+  final StreamController<void> _completeController = StreamController<void>.broadcast();
+
+  @override
+  Stream<PlayerState> get playbackStateStream => _playbackStateController.stream;
+  
+  @override
+  Stream<Duration> get positionStream => _positionController.stream;
+  
+  @override
+  Stream<Duration> get durationStream => _durationController.stream;
+  
+  @override
+  Stream<int> get currentIndexStream => _currentIndexController.stream;
+  
+  @override
+  Stream<void> get completeStream => _completeController.stream;
+
   @override
   bool get isInitialized => _isInitialized;
   
@@ -98,6 +120,11 @@ class AudioPlayerService extends AudioPlayerServiceBase {
 
   @override
   Future<void> dispose() async {
-    // Linux stub 不需要关闭任何资源
+    // ✅ 关闭所有Stream controllers
+    await _playbackStateController.close();
+    await _positionController.close();
+    await _durationController.close();
+    await _currentIndexController.close();
+    await _completeController.close();
   }
 }

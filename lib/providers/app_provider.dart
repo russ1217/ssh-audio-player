@@ -223,24 +223,10 @@ class AppProvider extends ChangeNotifier {
       debugPrint('🔄 正在恢复播放: ${_currentPlayingFile!.name}');
       
       final file = _currentPlayingFile!;
-      final fileSize = file.size ?? await _sshService.getFileSize(file.path) ?? 0;
-      final sizeInMB = fileSize ~/ (1024 * 1024);
-
-      // 恢复播放
-      if (sizeInMB > 50) {
-        // 大文件：重新启动流式服务
-        debugPrint('🌐 重新启动流式服务...');
-        await _playMediaStreaming(file);
-      } else {
-        // 小文件：检查缓存
-        if (_downloadCache.containsKey(file.path)) {
-          final cachedPath = _downloadCache[file.path]!;
-          await _audioPlayerService.playFile(cachedPath, isVideo: file.isVideo);
-        } else {
-          // 重新下载
-          await _playMediaAfterDownload(file);
-        }
-      }
+      
+      // ✅ 关键修复：统一使用流式播放，不再区分文件大小
+      debugPrint('🌐 重新启动流式服务...');
+      await _playMediaStreaming(file);
 
       // 恢复播放进度
       if (_playbackPositionBeforeDisconnect != null && _playbackPositionBeforeDisconnect! > Duration.zero) {
@@ -259,6 +245,7 @@ class AppProvider extends ChangeNotifier {
       debugPrint('❌ 恢复播放失败: $e');
       _shouldResumeAfterReconnect = false;
       _isAutoResuming = false;
+      rethrow;
     }
   }
 
@@ -1581,6 +1568,8 @@ class AppProvider extends ChangeNotifier {
     }
   }
 }
+
+
 
 
 
