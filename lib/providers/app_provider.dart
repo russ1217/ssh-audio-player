@@ -411,7 +411,14 @@ class AppProvider extends ChangeNotifier {
         return;
       }
 
+      // ✅ 关键修复：将耗时的SSH操作放到后台执行，避免阻塞UI线程
+      await Future.delayed(Duration.zero);
+      
       _currentFiles = await _sshService.listDirectory(_currentPath);
+      
+      // ✅ 排序操作也可能耗时，让出控制权
+      await Future.delayed(Duration.zero);
+      
       // 排序：目录在前，文件在后
       _currentFiles.sort((a, b) {
         if (a.isDirectory && !b.isDirectory) return -1;
@@ -449,19 +456,25 @@ class AppProvider extends ChangeNotifier {
   }
 
   // 播放控制
-  Future<void> playMedia(MediaFile file) async {
-    if (!file.isMedia) return;
+  Future<void> playMedia(MediaFile file, {bool syncPlaylistIndex = true}) async {
+    debugPrint('🎬 ========== playMedia 开始 ==========');
+    debugPrint('📄 文件: ${file.name}');
+    debugPrint('📍 路径: ${file.path}');
+    debugPrint('🎵 isMedia: ${file.isMedia}');
+    debugPrint('📂 isAudio: ${file.isAudio}, isVideo: ${file.isVideo}');
 
-    // ✅ 关键修复：确保音频播放器已完全初始化（解决冷启动小文件无声问题）
-    debugPrint('⏳ 确保音频播放器初始化...');
-    await _audioPlayerService.ensureInitialized();
-    debugPrint('✅ 音频播放器已初始化');
+    if (!file.isMedia) {
+      debugPrint('❌ 文件不是媒体文件，跳过播放');
+      return;
+    }
 
-    // 如果文件在播放列表中，同步 currentIndex
-    final playlistIndex = _playlist.indexWhere((f) => f.path == file.path);
-    if (playlistIndex >= 0) {
-      debugPrint('🔗 文件在播放列表中，同步索引: $playlistIndex');
-      _currentIndex = playlistIndex;
+    // 如果文件在播放列表中，同步 currentIndex（仅当 syncPlaylistIndex 为 true 时）
+    if (syncPlaylistIndex) {
+      final playlistIndex = _playlist.indexWhere((f) => f.path == file.path);
+      if (playlistIndex >= 0) {
+        debugPrint('🔗 文件在播放列表中，同步索引: $playlistIndex');
+        _currentIndex = playlistIndex;
+      }
     }
 
     debugPrint('▶️ playMedia 调用: 文件=${file.name}, 当前 _currentIndex=$_currentIndex, _playlist 长度=${_playlist.length}');
@@ -471,97 +484,33 @@ class AppProvider extends ChangeNotifier {
       _currentPlayingFile = file;
       notifyListeners();
 
-      // ✅ 更新 MediaSession 元数据（蓝牙设备显示曲目名称）
-      _updateMediaSessionMetadata(file);
+      // ✅ 关键修复：所有文件统一使用流式播放，取消小文件先下载再播放的机制
+      debugPrint('🌐 启动 HTTP 流式服务...');
+      await _playMediaStreaming(file);
 
-      // 检查是否已缓存
-      if (_downloadCache.containsKey(file.path)) {
-        final cachedPath = _downloadCache[file.path]!;
-        debugPrint('📁 使用缓存文件: $cachedPath');
-        final isVideo = file.isVideo;
-        await _audioPlayerService.playFile(cachedPath, isVideo: isVideo);
+      // 等待播放器就绪（解决首次播放无声问题）
+      final isReady = await _waitForPlayerReady(timeout: const Duration(seconds: 15));
+      
+      if (isReady) {
+        _isPlaying = true;
+        debugPrint('✅ 播放完成设置: _currentIndex=$_currentIndex');
         
-        // 等待播放器就绪（解决首次播放无声问题）
-        final isReady = await _waitForPlayerReady(timeout: const Duration(seconds: 10));
-        if (isReady) {
-          _isPlaying = true;
-          debugPrint('✅ 缓存文件播放成功');
-          
-          // ✅ 更新播放状态为播放中
-          _updateMediaSessionPlaybackState(isPlaying: true);
-          
-          // ✅ 关键修复：只有在播放器就绪后才触发预下载
-          _startPredownloading();
-        } else {
-          debugPrint('⚠️ 缓存文件播放失败，尝试重新播放');
-          await _audioPlayerService.play();
-          final retryReady = await _waitForPlayerReady(timeout: const Duration(seconds: 5));
-          _isPlaying = retryReady;
-          
-          // ✅ 更新播放状态
-          _updateMediaSessionPlaybackState(isPlaying: retryReady);
-          
-          // 重试成功后也触发预下载
-          if (retryReady) {
-            _startPredownloading();
-          }
-        }
+        // ✅ 更新播放状态为播放中
+        _updateMediaSessionPlaybackState(isPlaying: true);
         
-        _isLoading = false;
-        notifyListeners();
-        return;
-      }
-
-      // 获取文件大小
-      final fileSize = file.size ?? await _sshService.getFileSize(file.path) ?? 0;
-      final sizeInMB = fileSize ~/ (1024 * 1024);
-
-      // 大于 50MB 使用流式下载边下边播，小于 50MB 整体下载后播放
-      if (sizeInMB > 50) {
-        debugPrint('🎵 大文件 (${sizeInMB}MB)，使用流式下载播放');
-        await _playMediaStreaming(file);
-        
-        // 流式播放需要等待就绪
-        final isReady = await _waitForPlayerReady(timeout: const Duration(seconds: 15));
-        
-        if (isReady) {
-          _isPlaying = true;
-          debugPrint('✅ 流式播放完成设置: _currentIndex=$_currentIndex');
-          
-          // ✅ 更新播放状态为播放中
-          _updateMediaSessionPlaybackState(isPlaying: true);
-        } else {
-          debugPrint('⚠️ 流式播放器未就绪，尝试重新播放');
-          await _audioPlayerService.play();
-          final retryReady = await _waitForPlayerReady(timeout: const Duration(seconds: 5));
-          _isPlaying = retryReady;
-          
-          // ✅ 更新播放状态
-          _updateMediaSessionPlaybackState(isPlaying: retryReady);
-        }
+        // ✅ 关键修复：由于统一使用流式播放，不再需要预下载
+        // 流式播放会边下边播，预下载已无意义
+        debugPrint('📌 使用流式播放，无需预下载');
       } else {
-        debugPrint('🎵 小文件 (${sizeInMB}MB)，下载后播放');
-        // ✅ 关键修复：等待 _playMediaAfterDownload 返回的就绪状态
-        final isReady = await _playMediaAfterDownload(file);
+        debugPrint('⚠️ 播放器未就绪，尝试重新播放');
+        await _audioPlayerService.play();
+        final retryReady = await _waitForPlayerReady(timeout: const Duration(seconds: 5));
+        _isPlaying = retryReady;
         
-        if (isReady) {
-          _isPlaying = true;
-          debugPrint('✅ 小文件播放完成设置: _currentIndex=$_currentIndex');
-          
-          // ✅ 更新播放状态为播放中
-          _updateMediaSessionPlaybackState(isPlaying: true);
-          
-          // 触发预下载
-          _startPredownloading();
-        } else {
-          debugPrint('❌ 小文件播放器最终未就绪，不设置播放状态');
-          _isPlaying = false;
-          
-          // ✅ 更新播放状态为暂停
-          _updateMediaSessionPlaybackState(isPlaying: false);
-        }
+        // ✅ 更新播放状态
+        _updateMediaSessionPlaybackState(isPlaying: retryReady);
       }
-
+      
       // 保存播放位置
       await _saveCurrentPlaybackPosition();
     } catch (e, stackTrace) {
@@ -577,24 +526,7 @@ class AppProvider extends ChangeNotifier {
     }
   }
 
-  // 小文件：下载完成后播放
-  Future<bool> _playMediaAfterDownload(MediaFile file) async {
-    final fileData = await _sshService.readFile(file.path);
-    final tempFile = await _createTempFile(fileData, file.name);
-    
-    // 加入缓存
-    _downloadCache[file.path] = tempFile.path;
-
-    final isVideo = file.isVideo;
-    await _audioPlayerService.playFile(tempFile.path, isVideo: isVideo);
-    
-    // ✅ 修复：不再等待播放器就绪，直接返回true
-    // just_audio的play()是异步的，状态会通过监听器更新
-    debugPrint('✅ 已调用 play()，等待监听器更新状态');
-    return true;
-  }
-
-  // 大文件：真正的流式下载边下边播
+  // 大文件：真正的流式下载边下边播（现在所有文件都用这个方法）
   Future<void> _playMediaStreaming(MediaFile file) async {
     debugPrint('🌐 启动 HTTP 流式服务...');
 
@@ -807,12 +739,29 @@ class AppProvider extends ChangeNotifier {
       _isLoading = true;
       notifyListeners();
 
+      // ✅ 关键修复：将耗时的SSH操作放到后台执行，避免阻塞UI线程
+      // 使用compute或直接在后台执行，这里使用Future.delayed(0)让出UI线程
+      await Future.delayed(Duration.zero);
+      
       final files = await _sshService.listDirectory(path);
       final mediaFiles = files.where((f) => f.isMedia).toList();
       mediaFiles.sort((a, b) => a.name.compareTo(b.name));
       
-      _playlist.addAll(mediaFiles);
-      notifyListeners();
+      // ✅ 分批添加到播放列表，每次添加后让出控制权给UI线程
+      const batchSize = 50; // 每批处理50个文件
+      for (int i = 0; i < mediaFiles.length; i += batchSize) {
+        final end = (i + batchSize < mediaFiles.length) ? i + batchSize : mediaFiles.length;
+        final batch = mediaFiles.sublist(i, end);
+        _playlist.addAll(batch);
+        
+        // 让出控制权给UI线程，保持界面响应
+        await Future.delayed(Duration.zero);
+        notifyListeners();
+        
+        debugPrint('📋 已添加 ${end}/${mediaFiles.length} 个文件到播放列表');
+      }
+      
+      debugPrint('✅ 播放列表添加完成，共 ${mediaFiles.length} 个文件');
     } catch (e) {
       debugPrint('添加目录到播放列表失败: $e');
     } finally {
@@ -1404,12 +1353,25 @@ class AppProvider extends ChangeNotifier {
     _currentIndex = 0;
     _currentPlayingFile = null;
     
-    // 将保存的播放列表项转换为 MediaFile
-    for (final item in playlist.items) {
-      _playlist.add(MediaFile.file(item.filePath, item.fileName));
+    // ✅ 关键修复：分批添加文件到播放列表，避免UI阻塞
+    const batchSize = 100; // 每批处理100个文件
+    final totalItems = playlist.items.length;
+    
+    for (int i = 0; i < totalItems; i += batchSize) {
+      final end = (i + batchSize < totalItems) ? i + batchSize : totalItems;
+      final batch = playlist.items.sublist(i, end);
+      
+      for (final item in batch) {
+        _playlist.add(MediaFile.file(item.filePath, item.fileName));
+      }
+      
+      // 让出控制权给UI线程，保持界面响应
+      await Future.delayed(Duration.zero);
+      notifyListeners();
+      
+      debugPrint('📋 已加载 ${end}/${totalItems} 个文件到播放列表');
     }
     
-    notifyListeners();
     debugPrint('✅ 播放列表已加载: ${playlist.name} (${_playlist.length} 首歌曲), ID=$_currentPlaylistId');
   }
 
@@ -1619,6 +1581,12 @@ class AppProvider extends ChangeNotifier {
     }
   }
 }
+
+
+
+
+
+
 
 
 
