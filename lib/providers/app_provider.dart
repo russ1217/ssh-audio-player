@@ -471,6 +471,9 @@ class AppProvider extends ChangeNotifier {
       _currentPlayingFile = file;
       notifyListeners();
 
+      // ✅ 更新 MediaSession 元数据（蓝牙设备显示曲目名称）
+      _updateMediaSessionMetadata(file);
+
       // ✅ 关键修复：所有文件统一使用流式播放，取消小文件先下载再播放的机制
       debugPrint('🌐 启动 HTTP 流式服务...');
       await _playMediaStreaming(file);
@@ -668,10 +671,16 @@ class AppProvider extends ChangeNotifier {
         await _audioPlayerService.pause();
         _isPlaying = false;
         debugPrint('⏸️ 已调用 pause()，_isPlaying = false');
+        
+        // ✅ 更新 MediaSession 播放状态为暂停
+        _updateMediaSessionPlaybackState(isPlaying: false);
       } else {
         await _audioPlayerService.play();
         _isPlaying = true;
         debugPrint('▶️ 已调用 play()，_isPlaying = true');
+        
+        // ✅ 更新 MediaSession 播放状态为播放中
+        _updateMediaSessionPlaybackState(isPlaying: true);
       }
       notifyListeners();
     } catch (e) {
@@ -1568,6 +1577,10 @@ class AppProvider extends ChangeNotifier {
     }
   }
 }
+
+
+
+
 
 
 
