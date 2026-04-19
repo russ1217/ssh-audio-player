@@ -450,13 +450,22 @@ class AppProvider extends ChangeNotifier {
     
     debugPrint('🔄 切换到SSH远程模式');
     _isLocalMode = false;
-    _currentPath = '/';
     
-    // 如果SSH已连接，加载根目录
+    // ✅ 修复：根据SSH配置设置初始路径
+    if (_activeSSHConfig != null) {
+      _currentPath = _activeSSHConfig!.initialPath ?? '/';
+      debugPrint('📍 使用SSH配置的初始路径: $_currentPath');
+    } else {
+      _currentPath = '/';
+      debugPrint('📍 无SSH配置，使用根目录');
+    }
+    
+    // 如果SSH已连接，加载当前目录
     if (_isSSHConnected) {
       await _loadCurrentDirectory();
     } else {
       _currentFiles.clear();
+      debugPrint('⚠️ SSH未连接，显示空列表');
     }
     
     notifyListeners();
@@ -1518,7 +1527,7 @@ class AppProvider extends ChangeNotifier {
   Future<void> savePlaylistToDatabase(String name) async {
     final playlist = await _databaseService.createPlaylist(name);
     
-    // ✅ 修复：根据当前模式保存正确的sshConfigId
+    // ✅ 修复：根据当前模式保存正确的sshConfigId和路径信息
     String? sshConfigIdToSave;
     Map<String, dynamic>? sshSnapshot;
     
@@ -1528,7 +1537,7 @@ class AppProvider extends ChangeNotifier {
       sshSnapshot = null;
       debugPrint('💾 保存本地播放列表（无SSH配置）');
     } else if (_activeSSHConfig != null) {
-      // SSH模式：保存SSH配置快照
+      // SSH模式：保存SSH配置快照和当前路径
       sshConfigIdToSave = _activeSSHConfig!.id;
       sshSnapshot = {
         'id': _activeSSHConfig!.id,
@@ -1536,6 +1545,7 @@ class AppProvider extends ChangeNotifier {
         'port': _activeSSHConfig!.port,
         'username': _activeSSHConfig!.username,
         'name': _activeSSHConfig!.name,
+        'currentPath': _currentPath,  // ✅ 新增：保存当前浏览路径
         // 注意：不保存密码，用户需要重新输入或使用密钥
       };
       
@@ -1545,7 +1555,7 @@ class AppProvider extends ChangeNotifier {
         sshSnapshot,
       );
       
-      debugPrint('💾 保存SSH播放列表: ${_activeSSHConfig!.name} (${_activeSSHConfig!.host})');
+      debugPrint('💾 保存SSH播放列表: ${_activeSSHConfig!.name} (${_activeSSHConfig!.host}), 路径=$_currentPath');
     } else {
       // 异常情况：非本地模式但没有活跃SSH配置
       sshConfigIdToSave = null;
@@ -1588,27 +1598,41 @@ class AppProvider extends ChangeNotifier {
         await switchToSSHMode();
       }
       
-      // 如果有SSH配置快照，尝试恢复连接配置
+      // 如果有SSH配置快照，尝试恢复连接配置和路径
       if (playlist.sshConfigSnapshot != null && !_isSSHConnected) {
         debugPrint('🔗 尝试使用保存的SSH配置重新连接...');
         try {
           final snapshot = playlist.sshConfigSnapshot!;
-          // 注意：这里假设 SSHConfig 构造函数参数匹配，实际可能需要根据模型调整
-          // 由于 password 通常不保存，这里留空或提示用户
-          final config = SSHConfig(
+          
+          // ✅ 提取保存的路径
+          final savedPath = snapshot['currentPath'] as String? ?? '/';
+          debugPrint('📍 保存的路径: $savedPath');
+          
+          // 设置活动配置
+          _activeSSHConfig = SSHConfig(
             id: playlist.sshConfigId!,
             name: snapshot['name'] as String? ?? '恢复的连接',
             host: snapshot['host'] as String,
             port: snapshot['port'] as int? ?? 22,
             username: snapshot['username'] as String,
             password: '', // 密码需要用户重新输入
+            initialPath: savedPath,  // ✅ 恢复保存的路径
           );
           
-          // 设置活动配置，但不自动连接（因为缺少密码）
-          _activeSSHConfig = config;
-          debugPrint('⚠️ SSH配置已恢复，但需要用户重新输入密码以建立连接');
+          // ✅ 恢复当前路径
+          _currentPath = savedPath;
+          debugPrint('✅ SSH配置已恢复，路径=$_currentPath（需重新输入密码以连接）');
         } catch (e) {
           debugPrint('❌ 恢复SSH配置失败: $e');
+        }
+      } else if (_isSSHConnected && _activeSSHConfig != null) {
+        // 如果已经连接，但快照中有路径信息，也更新路径
+        if (playlist.sshConfigSnapshot != null) {
+          final savedPath = playlist.sshConfigSnapshot!['currentPath'] as String?;
+          if (savedPath != null && savedPath != '/') {
+            _currentPath = savedPath;
+            debugPrint('📍 恢复到保存的路径: $_currentPath');
+          }
         }
       }
     }
@@ -1867,6 +1891,12 @@ class AppProvider extends ChangeNotifier {
     }
   }
 }
+
+
+
+
+
+
 
 
 
