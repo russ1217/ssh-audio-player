@@ -415,16 +415,28 @@ class AppProvider extends ChangeNotifier {
     }
     
     _isLocalMode = true;
-    _currentPath = '/storage/emulated/0'; // Android默认存储路径
     
-    // 尝试获取外部存储目录
+    // ✅ 设置默认可访问的公共目录
+    // 优先级：Download > Music > 应用专属目录
     try {
-      final externalDir = await getExternalStorageDirectory();
-      if (externalDir != null) {
-        _currentPath = externalDir.path;
+      // 首先尝试常用的公共目录
+      final downloadDir = Directory('/storage/emulated/0/Download');
+      final musicDir = Directory('/storage/emulated/0/Music');
+      
+      if (await downloadDir.exists()) {
+        _currentPath = '/storage/emulated/0/Download';
+        debugPrint('✅ 使用Download目录: $_currentPath');
+      } else if (await musicDir.exists()) {
+        _currentPath = '/storage/emulated/0/Music';
+        debugPrint('✅ 使用Music目录: $_currentPath');
+      } else {
+        // 回退到内部存储根目录
+        _currentPath = '/storage/emulated/0';
+        debugPrint('⚠️ 使用内部存储根目录: $_currentPath');
       }
     } catch (e) {
-      debugPrint('⚠️ 获取外部存储目录失败: $e');
+      debugPrint('⚠️ 检查目录失败: $e，使用默认路径');
+      _currentPath = '/storage/emulated/0';
     }
     
     await _loadCurrentDirectory();
@@ -461,24 +473,65 @@ class AppProvider extends ChangeNotifier {
 
       if (_isLocalMode) {
         // ✅ 本地文件模式加载逻辑
+        debugPrint('📁 加载本地目录: $_currentPath');
         await Future.delayed(Duration.zero);
         
-        final directory = Directory(_currentPath);
-        if (await directory.exists()) {
+        try {
+          final directory = Directory(_currentPath);
+          
+          if (!await directory.exists()) {
+            debugPrint('❌ 目录不存在: $_currentPath');
+            _currentFiles = [];
+            
+            // 尝试回退到根目录
+            if (_currentPath != '/storage/emulated/0') {
+              debugPrint('🔄 尝试回退到内部存储根目录...');
+              _currentPath = '/storage/emulated/0';
+              await _loadCurrentDirectory();
+              return;
+            }
+            notifyListeners();
+            return;
+          }
+          
+          // 检查读取权限
+          try {
+            await directory.list().first.timeout(Duration(seconds: 2));
+          } catch (e) {
+            debugPrint('❌ 无权限读取目录: $e');
+            _currentFiles = [];
+            notifyListeners();
+            return;
+          }
+          
+          // 列出所有文件和文件夹
           final entities = await directory.list().toList();
+          debugPrint('📊 找到 ${entities.length} 个项目');
+          
           _currentFiles = entities.map((entity) {
-            final isDir = entity.statSync().type == FileSystemEntityType.directory;
-            // 使用相对路径或绝对路径，这里统一使用绝对路径以便播放
-            return MediaFile(
-              path: entity.path,
-              name: entity.uri.pathSegments.last,
-              isDirectory: isDir,
-              size: isDir ? null : entity.statSync().size,
-            );
-          }).toList();
-        } else {
+            try {
+              final stat = entity.statSync();
+              final isDir = stat.type == FileSystemEntityType.directory;
+              
+              return MediaFile(
+                path: entity.path,
+                name: entity.uri.pathSegments.last,
+                isDirectory: isDir,
+                size: isDir ? null : stat.size,
+              );
+            } catch (e) {
+              debugPrint('⚠️ 跳过无法访问的项目: ${entity.path}, 错误: $e');
+              // 返回一个占位对象或跳过
+              return null;
+            }
+          }).whereType<MediaFile>().toList(); // 过滤掉null值
+          
+          debugPrint('✅ 成功加载 ${_currentFiles.length} 个有效项目');
+          
+        } catch (e, stackTrace) {
+          debugPrint('❌ 加载本地目录失败: $e');
+          debugPrint('📚 堆栈: $stackTrace');
           _currentFiles = [];
-          debugPrint('⚠️ 本地路径不存在: $_currentPath');
         }
       } else {
         // ✅ SSH 远程模式加载逻辑
@@ -1678,6 +1731,8 @@ class AppProvider extends ChangeNotifier {
     }
   }
 }
+
+
 
 
 
