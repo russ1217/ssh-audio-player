@@ -320,13 +320,13 @@ class _CurrentPlaylistTab extends StatelessWidget {
                     Text(
                       provider.currentPlayingFile!.name,
                       textAlign: TextAlign.center,
-                      maxLines: 2,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 16,
+                        fontSize: 14,
                         fontWeight: FontWeight.bold,
-                        color: Theme.of(context).colorScheme.onSurface,
-                        height: 1.3,
+                        color: Theme.of(context).colorScheme.primary,
+                        height: 1.2,
                       ),
                     ),
                   ] else ...[
