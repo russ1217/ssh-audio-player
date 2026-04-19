@@ -264,7 +264,65 @@ class _CurrentPlaylistTab extends StatelessWidget {
 
         return Column(
           children: [
-            // ✅ 已移除：prev/next 按钮与底部播放控件重复
+            // ✅ 新增：正在播放的曲目信息显示区域（高亮居中）
+            if (provider.currentPlayingFile != null)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+                      Theme.of(context).colorScheme.primaryContainer.withOpacity(0.1),
+                    ],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                  border: Border(
+                    bottom: BorderSide(
+                      color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                      width: 2,
+                    ),
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.music_note,
+                          color: Theme.of(context).colorScheme.primary,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '正在播放',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      provider.currentPlayingFile!.name,
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.onSurface,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             const Divider(height: 1),
             // 播放列表
             Expanded(
