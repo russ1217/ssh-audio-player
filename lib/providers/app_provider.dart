@@ -1518,13 +1518,24 @@ class AppProvider extends ChangeNotifier {
   Future<void> savePlaylistToDatabase(String name) async {
     final playlist = await _databaseService.createPlaylist(name);
     
-    // 保存 SSH 配置快照
-    if (_activeSSHConfig != null) {
-      final sshSnapshot = {
+    // ✅ 修复：根据当前模式保存正确的sshConfigId
+    String? sshConfigIdToSave;
+    Map<String, dynamic>? sshSnapshot;
+    
+    if (_isLocalMode) {
+      // 本地模式：不保存SSH配置
+      sshConfigIdToSave = null;
+      sshSnapshot = null;
+      debugPrint('💾 保存本地播放列表（无SSH配置）');
+    } else if (_activeSSHConfig != null) {
+      // SSH模式：保存SSH配置快照
+      sshConfigIdToSave = _activeSSHConfig!.id;
+      sshSnapshot = {
         'id': _activeSSHConfig!.id,
         'host': _activeSSHConfig!.host,
         'port': _activeSSHConfig!.port,
         'username': _activeSSHConfig!.username,
+        'name': _activeSSHConfig!.name,
         // 注意：不保存密码，用户需要重新输入或使用密钥
       };
       
@@ -1533,11 +1544,18 @@ class AppProvider extends ChangeNotifier {
         _activeSSHConfig!.id,
         sshSnapshot,
       );
+      
+      debugPrint('💾 保存SSH播放列表: ${_activeSSHConfig!.name} (${_activeSSHConfig!.host})');
+    } else {
+      // 异常情况：非本地模式但没有活跃SSH配置
+      sshConfigIdToSave = null;
+      sshSnapshot = null;
+      debugPrint('⚠️ 警告：非本地模式但无活跃SSH配置，按本地模式保存');
     }
     
     for (final file in _playlist) {
       final item = PlaylistItem(
-        sshConfigId: _activeSSHConfig?.id ?? '',
+        sshConfigId: sshConfigIdToSave ?? '',
         filePath: file.path,
         fileName: file.name,
         addedAt: DateTime.now(),
@@ -1545,11 +1563,56 @@ class AppProvider extends ChangeNotifier {
       await _databaseService.addPlaylistItem(playlist.id, item);
     }
     
-    debugPrint('✅ 播放列表已保存: $name (${_playlist.length} 首歌曲)');
+    debugPrint('✅ 播放列表已保存: $name (${_playlist.length} 首歌曲), 模式=${_isLocalMode ? "本地" : "SSH"}');
   }
 
   /// 从数据库加载播放列表
   Future<void> loadPlaylist(Playlist playlist) async {
+    debugPrint('📋 ========== 开始加载播放列表 ==========');
+    debugPrint('📋 播放列表名称: ${playlist.name}');
+    debugPrint('📋 SSH配置ID: ${playlist.sshConfigId ?? "空（本地模式）"}');
+    
+    // ✅ 关键修复：根据播放列表的sshConfigId判断并切换模式
+    final isLocalPlaylist = playlist.sshConfigId == null || playlist.sshConfigId!.isEmpty;
+    
+    if (isLocalPlaylist) {
+      // 本地播放列表：切换到本地模式
+      debugPrint('🔄 检测到本地播放列表，切换到本地模式');
+      if (!_isLocalMode) {
+        await switchToLocalMode();
+      }
+    } else {
+      // SSH播放列表：尝试切换到SSH模式并连接
+      debugPrint('🔄 检测到SSH播放列表，尝试切换到SSH模式');
+      if (_isLocalMode) {
+        await switchToSSHMode();
+      }
+      
+      // 如果有SSH配置快照，尝试恢复连接配置
+      if (playlist.sshConfigSnapshot != null && !_isSSHConnected) {
+        debugPrint('🔗 尝试使用保存的SSH配置重新连接...');
+        try {
+          final snapshot = playlist.sshConfigSnapshot!;
+          // 注意：这里假设 SSHConfig 构造函数参数匹配，实际可能需要根据模型调整
+          // 由于 password 通常不保存，这里留空或提示用户
+          final config = SSHConfig(
+            id: playlist.sshConfigId!,
+            name: snapshot['name'] as String? ?? '恢复的连接',
+            host: snapshot['host'] as String,
+            port: snapshot['port'] as int? ?? 22,
+            username: snapshot['username'] as String,
+            password: '', // 密码需要用户重新输入
+          );
+          
+          // 设置活动配置，但不自动连接（因为缺少密码）
+          _activeSSHConfig = config;
+          debugPrint('⚠️ SSH配置已恢复，但需要用户重新输入密码以建立连接');
+        } catch (e) {
+          debugPrint('❌ 恢复SSH配置失败: $e');
+        }
+      }
+    }
+    
     // ✅ 关键修复：记录当前播放列表ID，用于查询该列表的断点
     _currentPlaylistId = playlist.id;
     
@@ -1558,7 +1621,6 @@ class AppProvider extends ChangeNotifier {
     _currentIndex = 0;
     _currentPlayingFile = null;
     
-    debugPrint('📋 开始加载播放列表: ${playlist.name}');
     debugPrint('📊 播放列表中共有 ${playlist.items.length} 个项目');
     
     // ✅ 关键修复：分批添加文件到播放列表，避免UI阻塞
@@ -1573,7 +1635,9 @@ class AppProvider extends ChangeNotifier {
         final mediaFile = MediaFile.file(item.filePath, item.fileName);
         
         // ✅ 添加调试日志：验证文件对象属性
-        debugPrint('📄 加载文件: name=${mediaFile.name}, path=${mediaFile.path}, isMedia=${mediaFile.isMedia}, isAudio=${mediaFile.isAudio}, isVideo=${mediaFile.isVideo}');
+        if (i == 0 && batch.indexOf(item) == 0) {
+          debugPrint('📄 示例文件: name=${mediaFile.name}, path=${mediaFile.path}, isMedia=${mediaFile.isMedia}');
+        }
         
         _playlist.add(mediaFile);
       }
@@ -1582,10 +1646,14 @@ class AppProvider extends ChangeNotifier {
       await Future.delayed(Duration.zero);
       notifyListeners();
       
-      debugPrint('📋 已加载 ${end}/${totalItems} 个文件到播放列表');
+      if (end % 100 == 0 || end == totalItems) {
+        debugPrint('📋 已加载 ${end}/${totalItems} 个文件到播放列表');
+      }
     }
     
-    debugPrint('✅ 播放列表已加载: ${playlist.name} (${_playlist.length} 首歌曲), ID=$_currentPlaylistId');
+    debugPrint('✅ 播放列表已加载: ${playlist.name} (${_playlist.length} 首歌曲)');
+    debugPrint('✅ 当前模式: ${_isLocalMode ? "本地" : "SSH"}');
+    debugPrint('📋 ========== 播放列表加载完成 ==========');
   }
 
   /// 恢复指定播放列表的上次播放位置
@@ -1799,6 +1867,8 @@ class AppProvider extends ChangeNotifier {
     }
   }
 }
+
+
 
 
 
