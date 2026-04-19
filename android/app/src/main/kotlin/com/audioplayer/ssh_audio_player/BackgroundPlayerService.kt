@@ -40,6 +40,7 @@ class BackgroundPlayerService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        println("🚀 BackgroundPlayerService onCreate 被调用")
         createNotificationChannel()
         
         // Acquire Wake Lock to keep CPU running
@@ -50,11 +51,12 @@ class BackgroundPlayerService : Service() {
         // Register network callback to keep network active
         registerNetworkCallback()
         
-        // ✅ 初始化 MediaSession
+        // ✅ 初始化 MediaSessionCompat
         initializeMediaSession()
         
-        // ✅ 注册到 MediaSessionHelper，使 MainActivity 可以访问
+        // ✅ 关键修复：将当前服务实例保存到 MediaSessionHelper
         MediaSessionHelper.backgroundService = this
+        println("✅ MediaSessionHelper.backgroundService 已设置为当前服务实例")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

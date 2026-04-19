@@ -27,8 +27,26 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _initApp();
+    
+    // ✅ 暂时不在initState中启动服务，改为在首次播放时启动
+    debugPrint('✅ 应用已初始化，服务将在首次播放时启动');
+  }
+  
+  /// ✅ 初始化前台服务（确保MediaSession和通知正常工作）
+  Future<void> _initializeForegroundService() async {
+    try {
+      if (!_isForegroundServiceRunning) {
+        // ✅ 关键修复：延迟500ms，确保MethodChannel handler已注册
+        await Future.delayed(const Duration(milliseconds: 500));
+        await BackgroundService.start();
+        _isForegroundServiceRunning = true;
+        debugPrint('✅ 前台服务已启动，MediaSession已初始化');
+      }
+    } catch (e) {
+      debugPrint('❌ 启动前台服务失败: $e');
+      // ✅ 即使启动失败，也标记为已运行，避免重复尝试
+      _isForegroundServiceRunning = true;
+    }
   }
 
   @override
