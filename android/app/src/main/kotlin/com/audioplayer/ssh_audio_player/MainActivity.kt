@@ -80,15 +80,6 @@ class MainActivity : FlutterActivity() {
                         result.error("SERVICE_ERROR", e.message, null)
                     }
                 }
-                "renewWakeLock" -> {
-                    try {
-                        // ✅ 续租 Wake Lock，防止应用被杀死后继续持有
-                        MediaSessionHelper.backgroundService?.renewWakeLock()
-                        result.success(true)
-                    } catch (e: Exception) {
-                        result.error("WAKE_LOCK_ERROR", e.message, null)
-                    }
-                }
                 else -> {
                     result.notImplemented()
                 }
@@ -220,30 +211,26 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        println("🗑️ MainActivity onDestroy 被调用")
+        Log.d("MainActivity", "🗑️ MainActivity onDestroy 被调用")
         
         try {
             // ✅ 关键修复：Activity销毁时也要停止前台服务
             // 这确保了即使服务还在启动过程中，也能被正确停止
             val serviceIntent = Intent(this, BackgroundPlayerService::class.java)
             stopService(serviceIntent)
-            println("✅ MainActivity: 已请求停止后台服务")
+            Log.d("MainActivity", "✅ MainActivity: 已请求停止后台服务")
         } catch (e: Exception) {
-            println("⚠️ MainActivity: 停止服务失败: ${e.message}")
+            Log.e("MainActivity", "⚠️ MainActivity: 停止服务失败: ${e.message}")
         }
         
         try {
             // ✅ 注销广播接收器
             unregisterMediaControlReceiver()
         } catch (e: Exception) {
-            println("⚠️ MainActivity: 注销广播接收器失败: ${e.message}")
+            Log.e("MainActivity", "⚠️ MainActivity: 注销广播接收器失败: ${e.message}")
         }
         
-        println("✅ MainActivity 清理完成")
-        
-        // ✅ 关键修复：使用System.exit强制退出整个JVM
-        println("💀 MainActivity: 立即退出JVM")
-        System.exit(0)
+        Log.d("MainActivity", "✅ MainActivity 完全销毁")
     }
 
 }

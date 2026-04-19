@@ -73,12 +73,9 @@ class BackgroundPlayerService : Service() {
         val notification = buildMediaStyleNotification().build()
         startForeground(NOTIFICATION_ID, notification)
         
-        // ✅ 关键修复：给Wake Lock添加极短的超时时间(2秒)
-        // Dart层会定期调用renewWakeLock()来续租(每1秒)
-        // 如果应用被杀死,renewWakeLock()不再被调用,Wake Lock会在2秒后自动释放
+        // Keep CPU on indefinitely (until service is stopped)
         if (!wakeLock.isHeld) {
-            wakeLock.acquire(2 * 1000L) // 2秒超时
-            Log.d(TAG, "🔒 Wake Lock 已获取，超时时间: 2秒")
+            wakeLock.acquire() // 无超时限制，直到手动释放
         }
 
         return START_NOT_STICKY // ✅ 关键修复：改为 NOT_STICKY，避免系统自动重启服务
@@ -90,76 +87,38 @@ class BackgroundPlayerService : Service() {
      */
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
-        Log.d(TAG, "🛑 应用被用户从最近任务中移除，立即停止服务和播放")
-        
-        try {
-            // ✅ 关键修复：先释放 Wake Lock，让 CPU 可以休眠
-            if (wakeLock.isHeld) {
-                wakeLock.release()
-                Log.d(TAG, "🔓 Wake Lock 已释放")
-            }
-            
-            // ✅ 停止 MediaSession
-            releaseMediaSession()
-            
-            // ✅ 取消网络回调
-            unregisterNetworkCallback()
-            
-            // ✅ 清除引用
-            MediaSessionHelper.backgroundService = null
-            
-            // ✅ 停止前台服务（会同时移除通知）
-            stopForeground(true)
-            
-            // ✅ 立即停止服务
-            stopSelf()
-            Log.d(TAG, "✅ 服务已请求停止")
-        } catch (e: Exception) {
-            Log.e(TAG, "⚠️ 清理过程中出错: ${e.message}")
-        }
-        
-        // ✅ 关键修复：使用System.exit强制退出整个JVM
-        // 这比killProcess更可靠，会触发所有finally块和shutdown hooks
-        Log.d(TAG, "💀 立即退出JVM")
-        System.exit(0)
+        Log.d(TAG, "🛑 应用被用户从最近任务中移除，停止服务和播放")
+        stopSelf()
     }
 
     override fun onDestroy() {
         super.onDestroy()
         Log.d(TAG, "🗑️ BackgroundPlayerService onDestroy 被调用")
         
-        try {
-            // ✅ 确保释放 Wake Lock
-            if (wakeLock.isHeld) {
-                wakeLock.release()
-                Log.d(TAG, "🔓 Wake Lock 已释放")
-            }
-            
-            // ✅ 取消网络回调
-            unregisterNetworkCallback()
-            
-            // ✅ 清理 MediaSession
-            releaseMediaSession()
-            
-            // ✅ 清除引用
-            MediaSessionHelper.backgroundService = null
-            
-            // ✅ 停止前台服务
-            try {
-                stopForeground(true)
-                Log.d(TAG, "✅ 前台服务已停止")
-            } catch (e: Exception) {
-                Log.e(TAG, "⚠️ 停止前台服务失败: ${e.message}")
-            }
-            
-            Log.d(TAG, "✅ BackgroundPlayerService 清理完成")
-        } catch (e: Exception) {
-            Log.e(TAG, "⚠️ onDestroy清理过程中出错: ${e.message}")
+        // ✅ 确保释放 Wake Lock
+        if (wakeLock.isHeld) {
+            wakeLock.release()
+            Log.d(TAG, "🔓 Wake Lock 已释放")
         }
         
-        // ✅ 关键修复：使用System.exit强制退出整个JVM
-        Log.d(TAG, "💀 onDestroy: 立即退出JVM")
-        System.exit(0)
+        // ✅ 取消网络回调
+        unregisterNetworkCallback()
+        
+        // ✅ 清理 MediaSession
+        releaseMediaSession()
+        
+        // ✅ 清除引用
+        MediaSessionHelper.backgroundService = null
+        
+        // ✅ 停止前台服务
+        try {
+            stopForeground(true)
+            Log.d(TAG, "✅ 前台服务已停止")
+        } catch (e: Exception) {
+            Log.e(TAG, "⚠️ 停止前台服务失败: ${e.message}")
+        }
+        
+        Log.d(TAG, "✅ BackgroundPlayerService 完全销毁")
     }
 
     override fun onBind(intent: Intent?): IBinder? {
@@ -242,19 +201,6 @@ class BackgroundPlayerService : Service() {
             Log.d(TAG, "📤 已广播媒体控制命令: $action")
         } catch (e: Exception) {
             Log.e(TAG, "❌ 发送媒体控制命令失败: ${e.message}")
-        }
-    }
-
-    /**
-     * ✅ 续租 Wake Lock（由Dart层定期调用）
-     * 如果应用被杀死，不再调用此方法，Wake Lock会在超时后自动释放
-     */
-    fun renewWakeLock() {
-        if (wakeLock.isHeld) {
-            wakeLock.acquire(2 * 1000L) // 重新获取2秒超时
-            Log.d(TAG, "🔄 Wake Lock 已续租，新超时: 2秒")
-        } else {
-            Log.w(TAG, "⚠️ Wake Lock 未持有，无法续租")
         }
     }
 

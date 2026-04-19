@@ -21,16 +21,6 @@ class BackgroundService {
       print("Failed to stop service: '${e.message}'.");
     }
   }
-  
-  /// ✅ 续租 Wake Lock（防止应用被杀死后继续持有）
-  /// 应该在播放期间定期调用（例如每10秒）
-  static Future<void> renewWakeLock() async {
-    try {
-      await _channel.invokeMethod('renewWakeLock');
-    } on PlatformException catch (e) {
-      print("Failed to renew wake lock: '${e.message}'.");
-    }
-  }
 }
 
 /// ✅ MediaSession 服务，用于向蓝牙设备广播媒体信息
