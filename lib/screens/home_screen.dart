@@ -68,7 +68,14 @@ class FileBrowserScreen extends StatefulWidget {
   State<FileBrowserScreen> createState() => _FileBrowserScreenState();
 }
 
-class _FileBrowserScreenState extends State<FileBrowserScreen> with WidgetsBindingObserver {
+class _FileBrowserScreenState extends State<FileBrowserScreen> with WidgetsBindingObserver, RouteAware {
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // ✅ 当依赖变化时（包括路由切换），检查并重置loading状态
+    _checkAndResetLoading();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -94,10 +101,22 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> with WidgetsBindi
   void _checkAndResetLoading() {
     final provider = context.read<AppProvider>();
     
-    // 如果isLoading为true但文件列表已加载完成，说明状态异常
+    // 情况1：isLoading为true但文件列表已加载完成
     if (provider.isLoading && provider.currentFiles.isNotEmpty) {
-      debugPrint('⚠️ 检测到异常的loading状态，强制重置');
+      debugPrint('⚠️ 检测到异常的loading状态（文件已加载），强制重置');
       provider.resetLoadingState();
+      return;
+    }
+    
+    // 情况2：isLoading为true但没有正在进行的操作（通过超时检测）
+    if (provider.isLoading) {
+      // 延迟一小段时间再检查，避免误判正常的加载过程
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted && provider.isLoading) {
+          debugPrint('⚠️ loading状态持续过久，强制重置');
+          provider.resetLoadingState();
+        }
+      });
     }
   }
 
