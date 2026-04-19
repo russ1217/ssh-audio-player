@@ -684,6 +684,9 @@ class AppProvider extends ChangeNotifier {
       return;
     }
 
+    // ✅ 关键修复：确保前台服务已启动（首次播放时）
+    await _ensureForegroundServiceStarted();
+
     // 如果文件在播放列表中，同步 currentIndex（仅当 syncPlaylistIndex 为 true 时）
     if (syncPlaylistIndex) {
       final playlistIndex = _playlist.indexWhere((f) => f.path == file.path);
@@ -1903,6 +1906,18 @@ class AppProvider extends ChangeNotifier {
     }
   }
 
+  /// ✅ 确保前台服务已启动（首次播放时调用）
+  Future<void> _ensureForegroundServiceStarted() async {
+    try {
+      debugPrint('🔧 检查前台服务状态...');
+      await BackgroundService.start();
+      debugPrint('✅ 前台服务已启动，MediaSession已初始化');
+    } catch (e) {
+      debugPrint('⚠️ 启动前台服务失败（可忽略）: $e');
+      // 即使启动失败也继续，可能是服务已经运行或其他原因
+    }
+  }
+
   /// ✅ 更新 MediaSession 元数据（用于蓝牙设备显示曲目信息）
   void _updateMediaSessionMetadata(MediaFile file) {
     try {
@@ -1976,6 +1991,10 @@ class AppProvider extends ChangeNotifier {
     }
   }
 }
+
+
+
+
 
 
 
