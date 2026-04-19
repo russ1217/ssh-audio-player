@@ -1831,17 +1831,17 @@ class AppProvider extends ChangeNotifier {
     super.dispose();
   }
 
-  /// ✅ 启动 Wake Lock 续租定时器（每10秒续租一次）
+  /// ✅ 启动 Wake Lock 续租定时器（每2秒续租一次）
   void _startWakeLockRenewTimer() {
     // 先停止旧的定时器
     _stopWakeLockRenewTimer();
     
-    _wakeLockRenewTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+    _wakeLockRenewTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
       BackgroundService.renewWakeLock();
       debugPrint('🔄 Wake Lock 已续租');
     });
     
-    debugPrint('✅ Wake Lock 续租定时器已启动（10秒间隔）');
+    debugPrint('✅ Wake Lock 续租定时器已启动（2秒间隔）');
   }
   
   /// ✅ 停止 Wake Lock 续租定时器
