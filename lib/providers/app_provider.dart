@@ -1732,16 +1732,24 @@ class AppProvider extends ChangeNotifier {
       final batch = playlist.items.sublist(i, end);
       
       for (final item in batch) {
-        final mediaFile = MediaFile.file(item.filePath, item.fileName);
+        // ✅ 关键修复：根据 sshConfigId 判断文件来源类型
+        final isSSHFile = item.sshConfigId.isNotEmpty;
+        final sourceType = isSSHFile ? FileSourceType.ssh : FileSourceType.local;
+        
+        final mediaFile = MediaFile.file(
+          item.filePath, 
+          item.fileName,
+          sourceType: sourceType, // ✅ 设置正确的来源类型
+        );
         
         // ✅ 添加调试日志：验证文件对象属性
         if (i == 0 && batch.indexOf(item) == 0) {
-          debugPrint('📄 示例文件: name=${mediaFile.name}, path=${mediaFile.path}, isMedia=${mediaFile.isMedia}');
+          debugPrint('📄 示例文件: name=${mediaFile.name}, path=${mediaFile.path}, isMedia=${mediaFile.isMedia}, sourceType=${mediaFile.sourceType}');
         }
         
         _playlist.add(mediaFile);
       }
-      
+
       // 让出控制权给UI线程，保持界面响应
       await Future.delayed(Duration.zero);
       notifyListeners();
@@ -1967,6 +1975,8 @@ class AppProvider extends ChangeNotifier {
     }
   }
 }
+
+
 
 
 
