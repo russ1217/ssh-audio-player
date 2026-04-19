@@ -6,10 +6,62 @@ import 'screens/home_screen.dart';
 import 'services/notification_service.dart';
 import 'services/background_service.dart';
 
+// ✅ 全局NavigatorKey，用于在静态上下文中访问Provider
+final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   
+  // ✅ 初始化媒体控制监听器（处理通知栏和蓝牙设备的控制命令）
+  _initializeMediaControlListener();
+  
   runApp(const MyApp());
+}
+
+/// ✅ 初始化媒体控制监听器
+void _initializeMediaControlListener() {
+  MediaSessionService.initializeMediaControlListener();
+  
+  // 设置回调函数，处理媒体控制命令
+  MediaSessionService.onMediaControl = (action) {
+    debugPrint('🎮 处理媒体控制命令: $action');
+    
+    // 通过全局NavigatorKey获取context，然后访问AppProvider
+    final context = _navigatorKey.currentContext;
+    if (context != null) {
+      try {
+        final appProvider = Provider.of<AppProvider>(context, listen: false);
+        
+        switch (action) {
+          case 'play':
+          case 'pause':
+            debugPrint('▶️/⏸️ 执行播放/暂停切换命令');
+            appProvider.togglePlayPause();
+            break;
+          case 'stop':
+            debugPrint('⏹️ 执行停止命令');
+            appProvider.stopPlayback();
+            break;
+          case 'next':
+            debugPrint('⏭️ 执行下一曲命令');
+            appProvider.playNextInPlaylist();
+            break;
+          case 'previous':
+            debugPrint('⏮️ 执行上一曲命令');
+            appProvider.playPreviousInPlaylist();
+            break;
+          default:
+            debugPrint('⚠️ 未知的控制命令: $action');
+        }
+      } catch (e) {
+        debugPrint('❌ 处理媒体控制命令失败: $e');
+      }
+    } else {
+      debugPrint('⚠️ 无法获取BuildContext，跳过控制命令');
+    }
+  };
+  
+  debugPrint('✅ 媒体控制监听器已初始化并设置回调');
 }
 
 class MyApp extends StatefulWidget {

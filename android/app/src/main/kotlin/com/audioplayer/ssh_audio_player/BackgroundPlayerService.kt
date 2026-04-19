@@ -20,12 +20,16 @@ import android.net.NetworkRequest
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import io.flutter.plugin.common.MethodChannel
 
 class BackgroundPlayerService : Service() {
 
     private lateinit var wakeLock: PowerManager.WakeLock
     private val CHANNEL_ID = "PlayerServiceChannel"
     private val NOTIFICATION_ID = 1
+    
+    // ✅ MethodChannel用于向Flutter层发送媒体控制命令
+    private var mediaControlChannel: MethodChannel? = null
     
     // 网络回调，用于保持网络连接活跃
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
@@ -165,13 +169,24 @@ class BackgroundPlayerService : Service() {
      */
     private fun handleMediaControl(action: String) {
         try {
-            // 通过 MainActivity 的 MethodChannel 发送控制命令到 Flutter
-            val intent = Intent("com.audioplayer.ssh_audio_player.MEDIA_CONTROL").apply {
-                putExtra("action", action)
-                setPackage(packageName)
+            println("📡 准备发送媒体控制命令到Flutter: $action")
+            
+            // ✅ 通过MainActivity获取Flutter引擎的MethodChannel
+            val activity = MediaSessionHelper.backgroundService
+            if (activity != null) {
+                // 尝试通过全局上下文获取Flutter引擎
+                // 但由于Service中没有直接的FlutterEngine引用，我们需要另一种方式
+                // 最简单的方式是通过广播，让MainActivity接收并转发
+                
+                val intent = Intent("com.audioplayer.ssh_audio_player.MEDIA_CONTROL").apply {
+                    putExtra("action", action)
+                    setPackage(packageName)
+                }
+                sendBroadcast(intent)
+                println("✅ 已广播媒体控制命令: $action")
+            } else {
+                println("❌ backgroundService为null，无法发送控制命令")
             }
-            sendBroadcast(intent)
-            println("📡 广播媒体控制命令: $action")
         } catch (e: Exception) {
             e.printStackTrace()
             println("❌ 发送媒体控制命令失败: ${e.message}")
