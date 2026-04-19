@@ -277,16 +277,20 @@ class _CurrentPlaylistTabState extends State<_CurrentPlaylistTab> {
           final viewportHeight = _scrollController.position.viewportDimension;
           final maxScroll = _scrollController.position.maxScrollExtent;
           
-          // 更精确的高度估算: ListTile标准高度约72px + Divider 1px = 73px
-          // 但考虑到padding和实际渲染,使用75px更准确
-          final itemHeight = 75.0;
+          // 根据实际测量,ListTile的实际渲染高度约72px
+          // 包括: ListTile内容(~56px) + 上下padding(~16px)
+          final itemHeight = 72.0;
           
-          // 计算目标位置,使目标项居中显示
-          final targetPosition = (provider.currentIndex * itemHeight) - (viewportHeight / 2) + (itemHeight / 2);
+          // 计算目标位置,使目标项的中心对齐到视口中心
+          // 要让目标项居中: targetPosition + viewportHeight/2 = itemTopPosition + itemHeight/2
+          // 所以: targetPosition = itemTopPosition + itemHeight/2 - viewportHeight/2
+          final itemTopPosition = provider.currentIndex * itemHeight;
+          final targetPosition = itemTopPosition + (itemHeight / 2) - (viewportHeight / 2);
           
           // 确保不超出边界
           final clampedPosition = targetPosition.clamp(0.0, maxScroll);
           
+          print('📜 计算详情 - itemTopPosition: ${itemTopPosition.toStringAsFixed(2)}, itemHeight: $itemHeight');
           print('📜 滚动参数 - 目标位置: ${targetPosition.toStringAsFixed(2)}, 夹紧后: ${clampedPosition.toStringAsFixed(2)}');
           print('📜 视口高度: ${viewportHeight.toStringAsFixed(2)}, 最大滚动: ${maxScroll.toStringAsFixed(2)}');
           print('📜 当前滚动: ${currentScroll.toStringAsFixed(2)}, 需要移动: ${(clampedPosition - currentScroll).toStringAsFixed(2)}');
