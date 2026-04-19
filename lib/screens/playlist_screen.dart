@@ -367,7 +367,7 @@ class _CurrentPlaylistTabState extends State<_CurrentPlaylistTab> {
                     final file = provider.playlist[index];
                     final isPlaying = index == provider.currentIndex;
 
-                    return KeyedSubtree(
+                    return Container(
                       key: _getItemKey(index),
                       child: ListTile(
                         key: ValueKey(file.path),
