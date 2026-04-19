@@ -13,6 +13,7 @@ import '../services/audio_player_base.dart';
 import '../services/timer_service.dart';
 import '../services/streaming_audio_service.dart';
 import '../services/background_service.dart';
+import '../services/storage_permission_service.dart';
 
 class AppProvider extends ChangeNotifier {
   final SSHService _sshService = SSHService();
@@ -20,6 +21,10 @@ class AppProvider extends ChangeNotifier {
   final AudioPlayerServiceBase _audioPlayerService = createAudioPlayerService();
   final StreamingAudioService _streamingService = StreamingAudioService();
   final TimerService _timerService = TimerService();
+  final StoragePermissionService _permissionService = StoragePermissionService();
+
+  // ✅ 新增：本地文件模式标志
+  bool _isLocalMode = false; // true=本地文件, false=SSH远程文件
 
   // SSH 状态
   List<SSHConfig> _sshConfigs = [];
@@ -30,6 +35,9 @@ class AppProvider extends ChangeNotifier {
   List<MediaFile> _currentFiles = [];
   String _currentPath = '/';
   bool _isLoading = false;
+
+  // Getters
+  bool get isLocalMode => _isLocalMode;
 
   // 播放列表
   String? _currentPlaylistId; // ✅ 当前播放列表ID，用于按列表记录断点
@@ -383,32 +391,111 @@ class AppProvider extends ChangeNotifier {
     await _sshService.disconnect();
     _activeSSHConfig = null;
     _isSSHConnected = false;
-    _currentFiles.clear();
+    
+    // 如果当前不是本地模式，则清空文件列表
+    if (!_isLocalMode) {
+      _currentFiles.clear();
+      _currentPath = '/';
+    }
+    
+    notifyListeners();
+  }
+
+  /// ✅ 切换到本地文件模式
+  Future<bool> switchToLocalMode() async {
+    if (_isLocalMode) return true;
+    
+    debugPrint('🔄 切换到本地文件模式');
+    
+    // ✅ 请求存储权限
+    final hasPermission = await _permissionService.ensureStoragePermission();
+    if (!hasPermission) {
+      debugPrint('❌ 存储权限被拒绝，无法切换到本地模式');
+      return false;
+    }
+    
+    _isLocalMode = true;
+    _currentPath = '/storage/emulated/0'; // Android默认存储路径
+    
+    // 尝试获取外部存储目录
+    try {
+      final externalDir = await getExternalStorageDirectory();
+      if (externalDir != null) {
+        _currentPath = externalDir.path;
+      }
+    } catch (e) {
+      debugPrint('⚠️ 获取外部存储目录失败: $e');
+    }
+    
+    await _loadCurrentDirectory();
+    notifyListeners();
+    return true;
+  }
+  
+  /// ✅ 切换到SSH远程模式
+  Future<void> switchToSSHMode() async {
+    if (!_isLocalMode) return;
+    
+    debugPrint('🔄 切换到SSH远程模式');
+    _isLocalMode = false;
     _currentPath = '/';
+    
+    // 如果SSH已连接，加载根目录
+    if (_isSSHConnected) {
+      await _loadCurrentDirectory();
+    } else {
+      _currentFiles.clear();
+    }
+    
     notifyListeners();
   }
 
   // 文件浏览
   Future<void> _loadCurrentDirectory() async {
-    if (!_isSSHConnected) return;
+    // 如果是本地模式，不需要 SSH 连接
+    if (!_isLocalMode && !_isSSHConnected) return;
 
     try {
       _isLoading = true;
       notifyListeners();
 
-      // 在加载目录前确保 SSH 连接有效
-      final isConnected = await _ensureSSHConnection();
-      if (!isConnected) {
-        _isSSHConnected = false;
-        _currentFiles = [];
-        debugPrint('❌ SSH 连接失败，无法加载目录');
-        return;
-      }
+      if (_isLocalMode) {
+        // ✅ 本地文件模式加载逻辑
+        await Future.delayed(Duration.zero);
+        
+        final directory = Directory(_currentPath);
+        if (await directory.exists()) {
+          final entities = await directory.list().toList();
+          _currentFiles = entities.map((entity) {
+            final isDir = entity.statSync().type == FileSystemEntityType.directory;
+            // 使用相对路径或绝对路径，这里统一使用绝对路径以便播放
+            return MediaFile(
+              path: entity.path,
+              name: entity.uri.pathSegments.last,
+              isDirectory: isDir,
+              size: isDir ? null : entity.statSync().size,
+            );
+          }).toList();
+        } else {
+          _currentFiles = [];
+          debugPrint('⚠️ 本地路径不存在: $_currentPath');
+        }
+      } else {
+        // ✅ SSH 远程模式加载逻辑
+        // 在加载目录前确保 SSH 连接有效
+        final isConnected = await _ensureSSHConnection();
+        if (!isConnected) {
+          _isSSHConnected = false;
+          _currentFiles = [];
+          debugPrint('❌ SSH 连接失败，无法加载目录');
+          return;
+        }
 
-      // ✅ 关键修复：将耗时的SSH操作放到后台执行，避免阻塞UI线程
-      await Future.delayed(Duration.zero);
-      
-      _currentFiles = await _sshService.listDirectory(_currentPath);
+        // ✅ 关键修复：将耗时的SSH操作放到后台执行，避免阻塞UI线程
+        await Future.delayed(Duration.zero);
+        
+        _currentFiles = await _sshService.listDirectory(_currentPath);
+      }
       
       // ✅ 排序操作也可能耗时，让出控制权
       await Future.delayed(Duration.zero);
@@ -481,9 +568,16 @@ class AppProvider extends ChangeNotifier {
       // ✅ 更新 MediaSession 元数据（蓝牙设备显示曲目名称）
       _updateMediaSessionMetadata(file);
 
-      // ✅ 关键修复：所有文件统一使用流式播放，取消小文件先下载再播放的机制
-      debugPrint('🌐 启动 HTTP 流式服务...');
-      await _playMediaStreaming(file);
+      // ✅ 关键修复：根据模式选择播放方式
+      if (_isLocalMode) {
+        // 本地文件模式：直接播放本地文件
+        debugPrint('📁 本地模式：直接播放文件 ${file.path}');
+        await _audioPlayerService.playFile(file.path, isVideo: file.isVideo);
+      } else {
+        // SSH远程模式：使用流式播放
+        debugPrint('🌐 SSH模式：启动 HTTP 流式服务...');
+        await _playMediaStreaming(file);
+      }
 
       // 等待播放器就绪（解决首次播放无声问题）
       final isReady = await _waitForPlayerReady(timeout: const Duration(seconds: 15));
@@ -497,7 +591,7 @@ class AppProvider extends ChangeNotifier {
         
         // ✅ 关键修复：由于统一使用流式播放，不再需要预下载
         // 流式播放会边下边播，预下载已无意义
-        debugPrint('📌 使用流式播放，无需预下载');
+        debugPrint('📌 使用${_isLocalMode ? "本地" : "流式"}播放，无需预下载');
       } else {
         debugPrint('⚠️ 播放器未就绪，尝试重新播放');
         await _audioPlayerService.play();
@@ -1584,6 +1678,12 @@ class AppProvider extends ChangeNotifier {
     }
   }
 }
+
+
+
+
+
+
 
 
 

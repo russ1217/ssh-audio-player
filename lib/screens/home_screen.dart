@@ -70,16 +70,38 @@ class FileBrowserScreen extends StatelessWidget {
       appBar: AppBar(
         title: Consumer<AppProvider>(
           builder: (context, provider, child) {
-            if (!provider.isSSHConnected) {
-              return const Text('未连接');
+            if (provider.isLocalMode) {
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.phone_android, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      provider.currentPath,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              );
+            } else {
+              if (!provider.isSSHConnected) {
+                return const Text('未连接');
+              }
+              return Text(provider.currentPath);
             }
-            return Text(provider.currentPath);
           },
         ),
         leading: Consumer<AppProvider>(
           builder: (context, provider, child) {
             // 不在根目录时显示返回按钮
-            if (provider.currentPath != '/' && provider.isSSHConnected) {
+            final isAtRoot = provider.isLocalMode 
+                ? (provider.currentPath == '/storage/emulated/0' || provider.currentPath.endsWith('/Android/data'))
+                : (provider.currentPath == '/');
+            
+            final canNavigateBack = !isAtRoot && (provider.isLocalMode || provider.isSSHConnected);
+            
+            if (canNavigateBack) {
               return IconButton(
                 icon: const Icon(Icons.arrow_back),
                 onPressed: () {
@@ -91,11 +113,52 @@ class FileBrowserScreen extends StatelessWidget {
           },
         ),
         actions: [
+          // ✅ 新增：本地/SSH模式切换按钮
+          Consumer<AppProvider>(
+            builder: (context, provider, child) {
+              return IconButton(
+                icon: Icon(
+                  provider.isLocalMode ? Icons.cloud : Icons.phone_android,
+                  color: provider.isLocalMode ? Colors.blue : Colors.green,
+                ),
+                tooltip: provider.isLocalMode ? '切换到SSH远程' : '切换到本地文件',
+                onPressed: () async {
+                  if (provider.isLocalMode) {
+                    await provider.switchToSSHMode();
+                    if (!provider.isSSHConnected) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('请先配置并连接SSH服务器'),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    }
+                  } else {
+                    final success = await provider.switchToLocalMode();
+                    if (!success) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Text('需要存储权限才能访问本地文件'),
+                          action: SnackBarAction(
+                            label: '去设置',
+                            onPressed: () {
+                              // TODO: 打开应用设置页面
+                            },
+                          ),
+                          duration: const Duration(seconds: 3),
+                        ),
+                      );
+                    }
+                  }
+                },
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () {
               final provider = context.read<AppProvider>();
-              if (provider.isSSHConnected) {
+              if (provider.isLocalMode || provider.isSSHConnected) {
                 provider.navigateTo(provider.currentPath);
               }
             },
@@ -104,7 +167,7 @@ class FileBrowserScreen extends StatelessWidget {
             icon: const Icon(Icons.playlist_add),
             onPressed: () {
               final provider = context.read<AppProvider>();
-              if (provider.isSSHConnected) {
+              if (provider.isLocalMode || provider.isSSHConnected) {
                 provider.addDirectoryToPlaylist(provider.currentPath);
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('已添加目录到播放列表')),
@@ -116,56 +179,79 @@ class FileBrowserScreen extends StatelessWidget {
       ),
       body: Consumer<AppProvider>(
         builder: (context, provider, child) {
-          if (!provider.isSSHConnected) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(
-                    Icons.cloud_off,
-                    size: 64,
-                    color: Colors.grey,
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    '未连接到 SSH 服务器',
-                    style: TextStyle(fontSize: 18),
-                  ),
-                  const SizedBox(height: 8),
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const SSHConfigScreen(),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.settings_ethernet),
-                    label: const Text('配置 SSH'),
-                  ),
-                ],
-              ),
+          // ✅ 本地模式或SSH已连接时显示文件列表
+          if (provider.isLocalMode) {
+            // 本地文件模式
+            if (provider.isLoading) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (provider.currentFiles.isEmpty) {
+              return const Center(
+                child: Text('此目录为空'),
+              );
+            }
+
+            return ListView.builder(
+              itemCount: provider.currentFiles.length,
+              itemBuilder: (context, index) {
+                final file = provider.currentFiles[index];
+                return FileListItem(file: file);
+              },
+            );
+          } else {
+            // SSH远程模式
+            if (!provider.isSSHConnected) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.cloud_off,
+                      size: 64,
+                      color: Colors.grey,
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      '未连接到 SSH 服务器',
+                      style: TextStyle(fontSize: 18),
+                    ),
+                    const SizedBox(height: 8),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const SSHConfigScreen(),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.settings_ethernet),
+                      label: const Text('配置 SSH'),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            if (provider.isLoading) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (provider.currentFiles.isEmpty) {
+              return const Center(
+                child: Text('此目录为空'),
+              );
+            }
+
+            return ListView.builder(
+              itemCount: provider.currentFiles.length,
+              itemBuilder: (context, index) {
+                final file = provider.currentFiles[index];
+                return FileListItem(file: file);
+              },
             );
           }
-
-          if (provider.isLoading) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          if (provider.currentFiles.isEmpty) {
-            return const Center(
-              child: Text('此目录为空'),
-            );
-          }
-
-          return ListView.builder(
-            itemCount: provider.currentFiles.length,
-            itemBuilder: (context, index) {
-              final file = provider.currentFiles[index];
-              return FileListItem(file: file);
-            },
-          );
         },
       ),
     );
