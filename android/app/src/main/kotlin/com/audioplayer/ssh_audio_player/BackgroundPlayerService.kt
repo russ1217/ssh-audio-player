@@ -9,6 +9,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaMetadata
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
@@ -23,6 +24,10 @@ import android.os.PowerManager
 import io.flutter.plugin.common.MethodChannel
 
 class BackgroundPlayerService : Service() {
+
+    companion object {
+        private const val TAG = "BackgroundPlayerService"
+    }
 
     private lateinit var wakeLock: PowerManager.WakeLock
     private val CHANNEL_ID = "PlayerServiceChannel"
@@ -82,13 +87,13 @@ class BackgroundPlayerService : Service() {
      */
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
-        println("🛑 应用被用户从最近任务中移除，立即停止服务和播放")
+        Log.d(TAG, "🛑 应用被用户从最近任务中移除，立即停止服务和播放")
         
         try {
             // ✅ 关键修复：先释放 Wake Lock，让 CPU 可以休眠
             if (wakeLock.isHeld) {
                 wakeLock.release()
-                println("🔓 Wake Lock 已释放")
+                Log.d(TAG, "🔓 Wake Lock 已释放")
             }
             
             // ✅ 停止 MediaSession
@@ -105,26 +110,26 @@ class BackgroundPlayerService : Service() {
             
             // ✅ 立即停止服务
             stopSelf()
-            println("✅ 服务已请求停止")
+            Log.d(TAG, "✅ 服务已请求停止")
         } catch (e: Exception) {
-            println("⚠️ 清理过程中出错: ${e.message}")
+            Log.e(TAG, "⚠️ 清理过程中出错: ${e.message}")
         }
         
         // ✅ 关键修复：使用System.exit强制退出整个JVM
         // 这比killProcess更可靠，会触发所有finally块和shutdown hooks
-        println("💀 立即退出JVM")
+        Log.d(TAG, "💀 立即退出JVM")
         System.exit(0)
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        println("🗑️ BackgroundPlayerService onDestroy 被调用")
+        Log.d(TAG, "🗑️ BackgroundPlayerService onDestroy 被调用")
         
         try {
             // ✅ 确保释放 Wake Lock
             if (wakeLock.isHeld) {
                 wakeLock.release()
-                println("🔓 Wake Lock 已释放")
+                Log.d(TAG, "🔓 Wake Lock 已释放")
             }
             
             // ✅ 取消网络回调
@@ -139,18 +144,18 @@ class BackgroundPlayerService : Service() {
             // ✅ 停止前台服务
             try {
                 stopForeground(true)
-                println("✅ 前台服务已停止")
+                Log.d(TAG, "✅ 前台服务已停止")
             } catch (e: Exception) {
-                println("⚠️ 停止前台服务失败: ${e.message}")
+                Log.e(TAG, "⚠️ 停止前台服务失败: ${e.message}")
             }
             
-            println("✅ BackgroundPlayerService 清理完成")
+            Log.d(TAG, "✅ BackgroundPlayerService 清理完成")
         } catch (e: Exception) {
-            println("⚠️ onDestroy清理过程中出错: ${e.message}")
+            Log.e(TAG, "⚠️ onDestroy清理过程中出错: ${e.message}")
         }
         
         // ✅ 关键修复：使用System.exit强制退出整个JVM
-        println("💀 onDestroy: 立即退出JVM")
+        Log.d(TAG, "💀 onDestroy: 立即退出JVM")
         System.exit(0)
     }
 
