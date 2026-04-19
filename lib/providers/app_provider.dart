@@ -224,6 +224,9 @@ class AppProvider extends ChangeNotifier {
       
       final file = _currentPlayingFile!;
       
+      // ✅ 更新 MediaSession 元数据（蓝牙设备显示曲目名称）
+      _updateMediaSessionMetadata(file);
+      
       // ✅ 关键修复：统一使用流式播放，不再区分文件大小
       debugPrint('🌐 重新启动流式服务...');
       await _playMediaStreaming(file);
@@ -240,6 +243,10 @@ class AppProvider extends ChangeNotifier {
       _playbackPositionBeforeDisconnect = null;
       _isAutoResuming = false;
       _isPlaying = true;
+      
+      // ✅ 更新 MediaSession 播放状态为播放中
+      _updateMediaSessionPlaybackState(isPlaying: true);
+      
       debugPrint('✅ 播放已恢复');
     } catch (e) {
       debugPrint('❌ 恢复播放失败: $e');
@@ -1577,6 +1584,8 @@ class AppProvider extends ChangeNotifier {
     }
   }
 }
+
+
 
 
 
