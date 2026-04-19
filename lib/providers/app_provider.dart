@@ -35,6 +35,9 @@ class AppProvider extends ChangeNotifier {
   List<MediaFile> _currentFiles = [];
   String _currentPath = '/';
   bool _isLoading = false;
+  
+  // ✅ 新增：用于强制刷新文件列表的计数器
+  int _refreshCounter = 0;
 
   // Getters
   bool get isLocalMode => _isLocalMode;
@@ -69,6 +72,7 @@ class AppProvider extends ChangeNotifier {
   List<MediaFile> get currentFiles => _currentFiles;
   String get currentPath => _currentPath;
   bool get isLoading => _isLoading;
+  int get refreshCounter => _refreshCounter;
   List<MediaFile> get playlist => _playlist;
   int get currentIndex => _currentIndex;
   MediaFile? get currentPlayingFile => _currentPlayingFile;
@@ -480,14 +484,42 @@ class AppProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// ✅ 新增：强制刷新当前目录（用于Tab切换时）
+  Future<void> forceRefreshCurrentDirectory() async {
+    debugPrint('🔄 强制刷新当前目录: $_currentPath (本地模式: $_isLocalMode, SSH连接: $_isSSHConnected)');
+    
+    // 增加刷新计数器，触发UI重新构建
+    _refreshCounter++;
+    
+    // 如果文件列表为空或loading状态异常，主动加载目录
+    if (_currentFiles.isEmpty || _isLoading) {
+      debugPrint('📂 文件列表为空或loading异常，重新加载目录');
+      await _loadCurrentDirectory();
+    } else {
+      debugPrint('✅ 文件列表已有数据，仅通知UI刷新');
+      notifyListeners();
+    }
+  }
+
   // 文件浏览
   Future<void> _loadCurrentDirectory() async {
+    // ✅ 关键修复：如果已经在加载中，避免重复加载
+    if (_isLoading) {
+      debugPrint('⚠️ 目录正在加载中，跳过重复请求');
+      return;
+    }
+    
     // 如果是本地模式，不需要 SSH 连接
-    if (!_isLocalMode && !_isSSHConnected) return;
+    if (!_isLocalMode && !_isSSHConnected) {
+      debugPrint('⚠️ 未连接任何模式（本地/SSH），无法加载目录');
+      return;
+    }
 
     try {
       _isLoading = true;
       notifyListeners();
+      
+      debugPrint('📂 开始加载目录: $_currentPath (本地模式: $_isLocalMode)');
 
       if (_isLocalMode) {
         // ✅ 本地文件模式加载逻辑
@@ -585,11 +617,15 @@ class AppProvider extends ChangeNotifier {
         if (!a.isDirectory && b.isDirectory) return 1;
         return a.name.compareTo(b.name);
       });
+      
+      debugPrint('✅ 目录加载完成，共 ${_currentFiles.length} 个项目');
     } catch (e) {
-      debugPrint('加载目录失败: $e');
+      debugPrint('❌ 加载目录失败: $e');
+      _currentFiles = [];
     } finally {
       _isLoading = false;
       notifyListeners();
+      debugPrint('🏁 目录加载流程结束，isLoading=false');
     }
   }
 
@@ -1900,6 +1936,12 @@ class AppProvider extends ChangeNotifier {
     }
   }
 }
+
+
+
+
+
+
 
 
 

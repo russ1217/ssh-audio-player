@@ -39,6 +39,17 @@ class _HomeScreenState extends State<HomeScreen> {
               setState(() {
                 _currentIndex = index;
               });
+              
+              // ✅ 关键修复：切换到文件浏览器Tab时，强制刷新目录
+              if (index == 0) {
+                Future.delayed(const Duration(milliseconds: 100), () {
+                  if (mounted) {
+                    final provider = context.read<AppProvider>();
+                    debugPrint('🔄 切换到文件浏览器Tab，触发刷新');
+                    provider.forceRefreshCurrentDirectory();
+                  }
+                });
+              }
             },
             destinations: const [
               NavigationDestination(
@@ -110,6 +121,7 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> with WidgetsBindi
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // ✅ 当应用恢复前台时，重置可能卡住的loading状态
     if (state == AppLifecycleState.resumed) {
+      debugPrint('🔄 应用恢复到前台，检查loading状态');
       _checkAndResetLoading();
     }
   }
@@ -280,7 +292,7 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> with WidgetsBindi
             onPressed: () {
               final provider = context.read<AppProvider>();
               if (provider.isLocalMode || provider.isSSHConnected) {
-                provider.navigateTo(provider.currentPath);
+                provider.forceRefreshCurrentDirectory(); // ✅ 使用强制刷新
               }
             },
           ),
@@ -300,20 +312,28 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> with WidgetsBindi
       ),
       body: Consumer<AppProvider>(
         builder: (context, provider, child) {
+          // ✅ 关键修复：监听 refreshCounter 变化，强制重建UI
+          final refreshKey = ValueKey<int>(provider.refreshCounter);
+          
           // ✅ 本地模式或SSH已连接时显示文件列表
           if (provider.isLocalMode) {
             // 本地文件模式
             if (provider.isLoading) {
-              return const Center(child: CircularProgressIndicator());
+              return Center(
+                key: refreshKey, // ✅ 使用key强制重建
+                child: const CircularProgressIndicator(),
+              );
             }
 
             if (provider.currentFiles.isEmpty) {
-              return const Center(
-                child: Text('此目录为空'),
+              return Center(
+                key: refreshKey, // ✅ 使用key强制重建
+                child: const Text('此目录为空'),
               );
             }
 
             return ListView.builder(
+              key: refreshKey, // ✅ 使用key强制重建
               itemCount: provider.currentFiles.length,
               itemBuilder: (context, index) {
                 final file = provider.currentFiles[index];
@@ -324,6 +344,7 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> with WidgetsBindi
             // SSH远程模式
             if (!provider.isSSHConnected) {
               return Center(
+                key: refreshKey, // ✅ 使用key强制重建
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -356,16 +377,21 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> with WidgetsBindi
             }
 
             if (provider.isLoading) {
-              return const Center(child: CircularProgressIndicator());
+              return Center(
+                key: refreshKey, // ✅ 使用key强制重建
+                child: const CircularProgressIndicator(),
+              );
             }
 
             if (provider.currentFiles.isEmpty) {
-              return const Center(
-                child: Text('此目录为空'),
+              return Center(
+                key: refreshKey, // ✅ 使用key强制重建
+                child: const Text('此目录为空'),
               );
             }
 
             return ListView.builder(
+              key: refreshKey, // ✅ 使用key强制重建
               itemCount: provider.currentFiles.length,
               itemBuilder: (context, index) {
                 final file = provider.currentFiles[index];
