@@ -253,19 +253,53 @@ class _CurrentPlaylistTabState extends State<_CurrentPlaylistTab> {
   }
 
   void _scrollToCurrentPlaying(AppProvider provider) {
+    print('📜 点击滚动 - currentIndex: ${provider.currentIndex}, playlist长度: ${provider.playlist.length}');
+    
     if (provider.currentIndex >= 0 && provider.currentIndex < provider.playlist.length) {
       // 延迟一帧确保widget已渲染
       WidgetsBinding.instance.addPostFrameCallback((_) {
         final key = _getItemKey(provider.currentIndex);
+        print('📜 GlobalKey currentContext: ${key.currentContext}');
+        
         if (key.currentContext != null) {
+          print('📜 开始滚动到索引: ${provider.currentIndex}');
           Scrollable.ensureVisible(
             key.currentContext!,
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeInOut,
             alignment: 0.5, // 滚动到视口中间位置
           );
+        } else {
+          print('❌ GlobalKey没有关联的context,使用ScrollController直接滚动');
+          
+          // 获取当前滚动位置和视口信息
+          final currentScroll = _scrollController.offset;
+          final viewportHeight = _scrollController.position.viewportDimension;
+          final maxScroll = _scrollController.position.maxScrollExtent;
+          
+          // 更精确的高度估算: ListTile标准高度约72px + Divider 1px = 73px
+          // 但考虑到padding和实际渲染,使用75px更准确
+          final itemHeight = 75.0;
+          
+          // 计算目标位置,使目标项居中显示
+          final targetPosition = (provider.currentIndex * itemHeight) - (viewportHeight / 2) + (itemHeight / 2);
+          
+          // 确保不超出边界
+          final clampedPosition = targetPosition.clamp(0.0, maxScroll);
+          
+          print('📜 滚动参数 - 目标位置: ${targetPosition.toStringAsFixed(2)}, 夹紧后: ${clampedPosition.toStringAsFixed(2)}');
+          print('📜 视口高度: ${viewportHeight.toStringAsFixed(2)}, 最大滚动: ${maxScroll.toStringAsFixed(2)}');
+          print('📜 当前滚动: ${currentScroll.toStringAsFixed(2)}, 需要移动: ${(clampedPosition - currentScroll).toStringAsFixed(2)}');
+          
+          _scrollController.animateTo(
+            clampedPosition,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+          );
         }
       });
+    } else {
+      print('❌ currentIndex超出范围: ${provider.currentIndex}');
     }
   }
 
