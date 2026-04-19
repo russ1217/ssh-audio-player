@@ -488,10 +488,11 @@ class AppProvider extends ChangeNotifier {
   Future<void> forceRefreshCurrentDirectory() async {
     debugPrint('🔄 强制刷新当前目录: $_currentPath (本地模式: $_isLocalMode, SSH连接: $_isSSHConnected)');
     
-    // ✅ 关键修复：如果loading状态异常卡住，先重置它
-    if (_isLoading && _currentFiles.isNotEmpty) {
-      debugPrint('⚠️ 检测到异常的loading状态（文件已加载），强制重置');
+    // ✅ 关键修复：如果loading状态异常卡住，无论文件列表是否为空，都强制重置
+    if (_isLoading) {
+      debugPrint('⚠️ 检测到异常的loading状态，强制重置');
       _isLoading = false;
+      notifyListeners();
     }
     
     // 增加刷新计数器，触发UI重新构建
@@ -1975,6 +1976,8 @@ class AppProvider extends ChangeNotifier {
     }
   }
 }
+
+
 
 
 
