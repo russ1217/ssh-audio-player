@@ -244,6 +244,7 @@ class _CurrentPlaylistTab extends StatefulWidget {
 
 class _CurrentPlaylistTabState extends State<_CurrentPlaylistTab> {
   final ScrollController _scrollController = ScrollController();
+  final Map<int, GlobalKey> _itemKeys = {};
 
   @override
   void dispose() {
@@ -253,14 +254,23 @@ class _CurrentPlaylistTabState extends State<_CurrentPlaylistTab> {
 
   void _scrollToCurrentPlaying(AppProvider provider) {
     if (provider.currentIndex >= 0 && provider.currentIndex < provider.playlist.length) {
-      // 计算目标位置（每个item大约56px高度）
-      final position = provider.currentIndex * 56.0;
-      _scrollController.animateTo(
-        position,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
+      final key = _itemKeys[provider.currentIndex];
+      if (key != null && key.currentContext != null) {
+        Scrollable.ensureVisible(
+          key.currentContext!,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+          alignment: 0.5, // 滚动到视口中间位置
+        );
+      }
     }
+  }
+
+  GlobalKey _getItemKey(int index) {
+    if (!_itemKeys.containsKey(index)) {
+      _itemKeys[index] = GlobalKey();
+    }
+    return _itemKeys[index]!;
   }
 
   @override
@@ -342,126 +352,129 @@ class _CurrentPlaylistTabState extends State<_CurrentPlaylistTab> {
                     provider.reorderPlaylist(oldIndex, newIndex);
                   },
                   itemBuilder: (context, index) {
-                  final file = provider.playlist[index];
-                  final isPlaying = index == provider.currentIndex;
-                  
-                  return ListTile(
-                    key: ValueKey(file.path),
-                    onTap: () {
-                      provider.playFromPlaylist(index);
-                    },
-                    leading: CircleAvatar(
-                      backgroundColor: isPlaying
-                          ? Theme.of(context).colorScheme.primary
-                          : Theme.of(context).colorScheme.secondaryContainer,
-                      child: Icon(
-                        isPlaying ? Icons.play_arrow : Icons.music_note,
-                        color: isPlaying
-                            ? Theme.of(context).colorScheme.onPrimary
-                            : Theme.of(context).colorScheme.onSecondaryContainer,
-                      ),
-                    ),
-                    title: Text(
-                      file.name,
-                      style: TextStyle(
-                        fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal,
-                        color: isPlaying ? Theme.of(context).colorScheme.primary : null,
-                      ),
-                    ),
-                    subtitle: Row(
-                      children: [
-                        // ✅ 新增：显示文件来源标识
-                        if (file.isSSHFile)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.blue.shade50,
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: Colors.blue.shade200, width: 1),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.cloud, size: 12, color: Colors.blue.shade700),
-                                const SizedBox(width: 3),
-                                Text(
-                                  'SSH',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: Colors.blue.shade700,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        if (file.isLocalFile)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.green.shade50,
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: Colors.green.shade200, width: 1),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.phone_android, size: 12, color: Colors.green.shade700),
-                                const SizedBox(width: 3),
-                                Text(
-                                  '本地',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: Colors.green.shade700,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            file.isDirectory ? '文件夹' : '音频文件',
-                            style: const TextStyle(fontSize: 12),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                    trailing: PopupMenuButton<String>(
-                      onSelected: (value) {
-                        if (value == 'remove') {
-                          provider.removeFromPlaylist(index);
-                        } else if (value == 'play') {
+                    final file = provider.playlist[index];
+                    final isPlaying = index == provider.currentIndex;
+
+                    return KeyedSubtree(
+                      key: _getItemKey(index),
+                      child: ListTile(
+                        key: ValueKey(file.path),
+                        onTap: () {
                           provider.playFromPlaylist(index);
-                        }
-                      },
-                      itemBuilder: (context) => [
-                        const PopupMenuItem(
-                          value: 'play',
-                          child: Row(
-                            children: [
-                              Icon(Icons.play_arrow),
-                              SizedBox(width: 8),
-                              Text('播放'),
-                            ],
+                        },
+                        leading: CircleAvatar(
+                          backgroundColor: isPlaying
+                              ? Theme.of(context).colorScheme.primary
+                              : Theme.of(context).colorScheme.secondaryContainer,
+                          child: Icon(
+                            isPlaying ? Icons.play_arrow : Icons.music_note,
+                            color: isPlaying
+                                ? Theme.of(context).colorScheme.onPrimary
+                                : Theme.of(context).colorScheme.onSecondaryContainer,
                           ),
                         ),
-                        const PopupMenuItem(
-                          value: 'remove',
-                          child: Row(
-                            children: [
-                              Icon(Icons.remove_circle_outline),
-                              SizedBox(width: 8),
-                              Text('移除'),
-                            ],
+                        title: Text(
+                          file.name,
+                          style: TextStyle(
+                            fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal,
+                            color: isPlaying ? Theme.of(context).colorScheme.primary : null,
                           ),
                         ),
-                      ],
-                    ),
-                  );
-                },
+                        subtitle: Row(
+                          children: [
+                            // ✅ 新增：显示文件来源标识
+                            if (file.isSSHFile)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.shade50,
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(color: Colors.blue.shade200, width: 1),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.cloud, size: 12, color: Colors.blue.shade700),
+                                    const SizedBox(width: 3),
+                                    Text(
+                                      'SSH',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: Colors.blue.shade700,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            if (file.isLocalFile)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.shade50,
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(color: Colors.green.shade200, width: 1),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.phone_android, size: 12, color: Colors.green.shade700),
+                                    const SizedBox(width: 3),
+                                    Text(
+                                      '本地',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: Colors.green.shade700,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                file.isDirectory ? '文件夹' : '音频文件',
+                                style: const TextStyle(fontSize: 12),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                        trailing: PopupMenuButton<String>(
+                          onSelected: (value) {
+                            if (value == 'remove') {
+                              provider.removeFromPlaylist(index);
+                            } else if (value == 'play') {
+                              provider.playFromPlaylist(index);
+                            }
+                          },
+                          itemBuilder: (context) => [
+                            const PopupMenuItem(
+                              value: 'play',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.play_arrow),
+                                  SizedBox(width: 8),
+                                  Text('播放'),
+                                ],
+                              ),
+                            ),
+                            const PopupMenuItem(
+                              value: 'remove',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.remove_circle_outline),
+                                  SizedBox(width: 8),
+                                  Text('移除'),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
