@@ -237,7 +237,32 @@ class _PlaylistScreenState extends State<PlaylistScreen> with SingleTickerProvid
 }
 
 // 当前播放列表标签页
-class _CurrentPlaylistTab extends StatelessWidget {
+class _CurrentPlaylistTab extends StatefulWidget {
+  @override
+  State<_CurrentPlaylistTab> createState() => _CurrentPlaylistTabState();
+}
+
+class _CurrentPlaylistTabState extends State<_CurrentPlaylistTab> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToCurrentPlaying(AppProvider provider) {
+    if (provider.currentIndex >= 0 && provider.currentIndex < provider.playlist.length) {
+      // 计算目标位置（每个item大约56px高度）
+      final position = provider.currentIndex * 56.0;
+      _scrollController.animateTo(
+        position,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer<AppProvider>(
@@ -267,104 +292,56 @@ class _CurrentPlaylistTab extends StatelessWidget {
         return Column(
           children: [
             // ✅ 新增：正在播放的曲目信息显示区域（高亮居中）
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: provider.currentPlayingFile != null
-                      ? [
-                          Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
-                          Theme.of(context).colorScheme.primaryContainer.withOpacity(0.1),
-                        ]
-                      : [
-                          Colors.grey.shade100,
-                          Colors.grey.shade50,
-                        ],
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                ),
-                border: Border(
-                  bottom: BorderSide(
-                    color: provider.currentPlayingFile != null
-                        ? Theme.of(context).colorScheme.primary.withOpacity(0.3)
-                        : Colors.grey.shade300,
-                    width: 2,
+            if (provider.currentPlayingFile != null)
+              GestureDetector(
+                onTap: () => _scrollToCurrentPlaying(provider),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+                        Theme.of(context).colorScheme.primaryContainer.withOpacity(0.1),
+                      ],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                    border: Border(
+                      bottom: BorderSide(
+                        color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                        width: 2,
+                      ),
+                    ),
+                  ),
+                  child: Text(
+                    provider.currentPlayingFile!.name,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.primary,
+                      height: 1.2,
+                    ),
                   ),
                 ),
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (provider.currentPlayingFile != null) ...[
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.music_note,
-                          color: Theme.of(context).colorScheme.primary,
-                          size: 18,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          '正在播放',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      provider.currentPlayingFile!.name,
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Theme.of(context).colorScheme.primary,
-                        height: 1.2,
-                      ),
-                    ),
-                  ] else ...[
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.info_outline,
-                          color: Colors.grey.shade600,
-                          size: 18,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          '暂无正在播放的曲目',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey.shade600,
-                            fontStyle: FontStyle.italic,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ],
-              ),
-            ),
             const Divider(height: 1),
             // 播放列表
             Expanded(
-              child: ReorderableListView.builder(
-                itemCount: provider.playlist.length,
-                onReorder: (oldIndex, newIndex) {
-                  if (newIndex > oldIndex) {
-                    newIndex -= 1;
-                  }
-                  provider.reorderPlaylist(oldIndex, newIndex);
-                },
-                itemBuilder: (context, index) {
+              child: PrimaryScrollController(
+                controller: _scrollController,
+                child: ReorderableListView.builder(
+                  itemCount: provider.playlist.length,
+                  onReorder: (oldIndex, newIndex) {
+                    if (newIndex > oldIndex) {
+                      newIndex -= 1;
+                    }
+                    provider.reorderPlaylist(oldIndex, newIndex);
+                  },
+                  itemBuilder: (context, index) {
                   final file = provider.playlist[index];
                   final isPlaying = index == provider.currentIndex;
                   
@@ -453,6 +430,8 @@ class _CurrentPlaylistTab extends StatelessWidget {
                       onSelected: (value) {
                         if (value == 'remove') {
                           provider.removeFromPlaylist(index);
+                        } else if (value == 'play') {
+                          provider.playFromPlaylist(index);
                         }
                       },
                       itemBuilder: (context) => [
@@ -478,11 +457,9 @@ class _CurrentPlaylistTab extends StatelessWidget {
                         ),
                       ],
                     ),
-                    onTap: () {
-                      provider.playFromPlaylist(index);
-                    },
                   );
                 },
+                ),
               ),
             ),
           ],
