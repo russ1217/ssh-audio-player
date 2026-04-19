@@ -72,7 +72,24 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> with WidgetsBindi
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // ✅ 当依赖变化时（包括路由切换），检查并重置loading状态
+    
+    final provider = context.read<AppProvider>();
+    
+    // ✅ 关键修复：如果是首次显示且文件列表为空，主动初始化
+    if (provider.currentFiles.isEmpty && !provider.isLoading) {
+      debugPrint('📂 文件列表为空，检查是否需要初始化');
+      
+      if (provider.isLocalMode) {
+        // 本地模式但文件列表为空 → 加载默认目录
+        debugPrint('🔄 本地模式但未加载目录，主动加载: ${provider.currentPath}');
+        provider.navigateTo(provider.currentPath);
+      } else if (!provider.isSSHConnected) {
+        // SSH模式但未连接 → 提示用户或切换到本地模式
+        debugPrint('⚠️ SSH未连接，建议切换到本地模式');
+      }
+    }
+    
+    // ✅ 检查并重置异常的loading状态
     _checkAndResetLoading();
   }
 
@@ -101,20 +118,29 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> with WidgetsBindi
   void _checkAndResetLoading() {
     final provider = context.read<AppProvider>();
     
-    // 情况1：isLoading为true但文件列表已加载完成
+    // 情况1：isLoading为true但文件列表已加载完成 → 立即重置
     if (provider.isLoading && provider.currentFiles.isNotEmpty) {
       debugPrint('⚠️ 检测到异常的loading状态（文件已加载），强制重置');
       provider.resetLoadingState();
       return;
     }
     
-    // 情况2：isLoading为true但没有正在进行的操作（通过超时检测）
-    if (provider.isLoading) {
-      // 延迟一小段时间再检查，避免误判正常的加载过程
-      Future.delayed(const Duration(milliseconds: 500), () {
+    // 情况2：isLoading为true且文件列表为空 → 可能是从未加载过目录
+    // 这种情况下，应该主动触发一次目录加载，而不是无限等待
+    if (provider.isLoading && provider.currentFiles.isEmpty) {
+      debugPrint('⚠️ loading状态持续且文件列表为空，可能是未初始化目录');
+      
+      // 延迟检查，避免误判刚启动的加载
+      Future.delayed(const Duration(milliseconds: 800), () {
         if (mounted && provider.isLoading) {
-          debugPrint('⚠️ loading状态持续过久，强制重置');
+          debugPrint('⚠️ 超时后仍为loading状态，强制重置并重新加载目录');
           provider.resetLoadingState();
+          
+          // ✅ 关键：主动触发目录加载
+          if (provider.isLocalMode || provider.isSSHConnected) {
+            debugPrint('🔄 主动重新加载当前目录: ${provider.currentPath}');
+            provider.navigateTo(provider.currentPath);
+          }
         }
       });
     }
