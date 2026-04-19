@@ -232,9 +232,9 @@ class MainActivity : FlutterActivity() {
         
         println("✅ MainActivity 清理完成")
         
-        // ✅ 关键修复：立即强制杀死进程，不等待任何延迟
-        println("💀 MainActivity: 立即强制杀死应用进程")
-        android.os.Process.killProcess(android.os.Process.myPid())
+        // ✅ 关键修复：使用System.exit强制退出整个JVM
+        println("💀 MainActivity: 立即退出JVM")
+        System.exit(0)
     }
 
 }

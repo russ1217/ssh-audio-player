@@ -110,10 +110,10 @@ class BackgroundPlayerService : Service() {
             println("⚠️ 清理过程中出错: ${e.message}")
         }
         
-        // ✅ 关键修复：立即强制杀死进程，不等待任何延迟
-        // Handler.postDelayed可能因为Looper问题而不执行，直接kill更可靠
-        println("💀 立即强制杀死应用进程")
-        android.os.Process.killProcess(android.os.Process.myPid())
+        // ✅ 关键修复：使用System.exit强制退出整个JVM
+        // 这比killProcess更可靠，会触发所有finally块和shutdown hooks
+        println("💀 立即退出JVM")
+        System.exit(0)
     }
 
     override fun onDestroy() {
@@ -149,9 +149,9 @@ class BackgroundPlayerService : Service() {
             println("⚠️ onDestroy清理过程中出错: ${e.message}")
         }
         
-        // ✅ 关键修复：立即强制杀死进程，不等待任何延迟
-        println("💀 onDestroy: 立即强制杀死应用进程")
-        android.os.Process.killProcess(android.os.Process.myPid())
+        // ✅ 关键修复：使用System.exit强制退出整个JVM
+        println("💀 onDestroy: 立即退出JVM")
+        System.exit(0)
     }
 
     override fun onBind(intent: Intent?): IBinder? {
