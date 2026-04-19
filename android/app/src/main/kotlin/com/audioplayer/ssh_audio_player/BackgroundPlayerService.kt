@@ -73,9 +73,12 @@ class BackgroundPlayerService : Service() {
         val notification = buildMediaStyleNotification().build()
         startForeground(NOTIFICATION_ID, notification)
         
-        // Keep CPU on indefinitely (until service is stopped)
+        // ✅ 关键修复：给Wake Lock添加较短的超时时间(30秒)
+        // Dart层会定期调用renewWakeLock()来续租
+        // 如果应用被杀死,renewWakeLock()不再被调用,Wake Lock会在30秒后自动释放
         if (!wakeLock.isHeld) {
-            wakeLock.acquire() // 无超时限制，直到手动释放
+            wakeLock.acquire(30 * 1000L) // 30秒超时
+            Log.d(TAG, "🔒 Wake Lock 已获取，超时时间: 30秒")
         }
 
         return START_NOT_STICKY // ✅ 关键修复：改为 NOT_STICKY，避免系统自动重启服务
@@ -228,27 +231,30 @@ class BackgroundPlayerService : Service() {
      */
     private fun handleMediaControl(action: String) {
         try {
-            println("📡 准备发送媒体控制命令到Flutter: $action")
+            Log.d(TAG, "📡 准备发送媒体控制命令到Flutter: $action")
             
-            // ✅ 通过MainActivity获取Flutter引擎的MethodChannel
-            val activity = MediaSessionHelper.backgroundService
-            if (activity != null) {
-                // 尝试通过全局上下文获取Flutter引擎
-                // 但由于Service中没有直接的FlutterEngine引用，我们需要另一种方式
-                // 最简单的方式是通过广播，让MainActivity接收并转发
-                
-                val intent = Intent("com.audioplayer.ssh_audio_player.MEDIA_CONTROL").apply {
-                    putExtra("action", action)
-                    setPackage(packageName)
-                }
-                sendBroadcast(intent)
-                println("✅ 已广播媒体控制命令: $action")
-            } else {
-                println("❌ backgroundService为null，无法发送控制命令")
+            // ✅ 通过广播发送媒体控制命令
+            val intent = Intent("com.audioplayer.ssh_audio_player.MEDIA_CONTROL").apply {
+                putExtra("action", action)
+                setPackage(packageName)
             }
+            sendBroadcast(intent)
+            Log.d(TAG, "📤 已广播媒体控制命令: $action")
         } catch (e: Exception) {
-            e.printStackTrace()
-            println("❌ 发送媒体控制命令失败: ${e.message}")
+            Log.e(TAG, "❌ 发送媒体控制命令失败: ${e.message}")
+        }
+    }
+
+    /**
+     * ✅ 续租 Wake Lock（由Dart层定期调用）
+     * 如果应用被杀死，不再调用此方法，Wake Lock会在超时后自动释放
+     */
+    fun renewWakeLock() {
+        if (wakeLock.isHeld) {
+            wakeLock.acquire(30 * 1000L) // 重新获取30秒超时
+            Log.d(TAG, "🔄 Wake Lock 已续租，新超时: 30秒")
+        } else {
+            Log.w(TAG, "⚠️ Wake Lock 未持有，无法续租")
         }
     }
 

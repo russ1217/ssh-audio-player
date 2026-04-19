@@ -23,6 +23,9 @@ class AppProvider extends ChangeNotifier {
   final TimerService _timerService = TimerService();
   final StoragePermissionService _permissionService = StoragePermissionService();
 
+  // ✅ Wake Lock续租定时器
+  Timer? _wakeLockRenewTimer;
+
   // ✅ 新增：本地文件模式标志
   bool _isLocalMode = false; // true=本地文件, false=SSH远程文件
 
@@ -913,6 +916,9 @@ class AppProvider extends ChangeNotifier {
         
         // ✅ 更新 MediaSession 播放状态为暂停
         _updateMediaSessionPlaybackState(isPlaying: false);
+        
+        // ✅ 停止 Wake Lock 续租定时器
+        _stopWakeLockRenewTimer();
       } else {
         await _audioPlayerService.play();
         _isPlaying = true;
@@ -920,6 +926,9 @@ class AppProvider extends ChangeNotifier {
         
         // ✅ 更新 MediaSession 播放状态为播放中
         _updateMediaSessionPlaybackState(isPlaying: true);
+        
+        // ✅ 启动 Wake Lock 续租定时器（每10秒续租一次）
+        _startWakeLockRenewTimer();
       }
       notifyListeners();
     } catch (e) {
@@ -939,6 +948,9 @@ class AppProvider extends ChangeNotifier {
     
     // ✅ 更新 MediaSession 播放状态为停止
     _updateMediaSessionPlaybackState(isPlaying: false);
+    
+    // ✅ 停止 Wake Lock 续租定时器
+    _stopWakeLockRenewTimer();
     
     // ✅ 关键修复：停止后台前台服务，防止杀掉app后继续播放
     try {
@@ -1809,6 +1821,9 @@ class AppProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    // ✅ 停止 Wake Lock 续租定时器
+    _stopWakeLockRenewTimer();
+    
     _sshService.dispose();
     _audioPlayerService.dispose();
     _timerService.dispose();
@@ -1816,6 +1831,28 @@ class AppProvider extends ChangeNotifier {
     super.dispose();
   }
 
+  /// ✅ 启动 Wake Lock 续租定时器（每10秒续租一次）
+  void _startWakeLockRenewTimer() {
+    // 先停止旧的定时器
+    _stopWakeLockRenewTimer();
+    
+    _wakeLockRenewTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+      BackgroundService.renewWakeLock();
+      debugPrint('🔄 Wake Lock 已续租');
+    });
+    
+    debugPrint('✅ Wake Lock 续租定时器已启动（10秒间隔）');
+  }
+  
+  /// ✅ 停止 Wake Lock 续租定时器
+  void _stopWakeLockRenewTimer() {
+    if (_wakeLockRenewTimer != null) {
+      _wakeLockRenewTimer!.cancel();
+      _wakeLockRenewTimer = null;
+      debugPrint('⏹️ Wake Lock 续租定时器已停止');
+    }
+  }
+  
   /// 检查当前播放列表是否有上次播放位置记录
   Future<bool> hasPendingRestoreForCurrentPlaylist() async {
     if (_currentPlaylistId == null || _currentPlaylistId!.isEmpty) {
@@ -2000,6 +2037,14 @@ class AppProvider extends ChangeNotifier {
     }
   }
 }
+
+
+
+
+
+
+
+
 
 
 

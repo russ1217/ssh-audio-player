@@ -80,6 +80,15 @@ class MainActivity : FlutterActivity() {
                         result.error("SERVICE_ERROR", e.message, null)
                     }
                 }
+                "renewWakeLock" -> {
+                    try {
+                        // ✅ 续租 Wake Lock，防止应用被杀死后继续持有
+                        MediaSessionHelper.backgroundService?.renewWakeLock()
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("WAKE_LOCK_ERROR", e.message, null)
+                    }
+                }
                 else -> {
                     result.notImplemented()
                 }
