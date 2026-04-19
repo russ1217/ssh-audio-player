@@ -891,19 +891,65 @@ class AppProvider extends ChangeNotifier {
   }
 
   Future<void> addDirectoryToPlaylist(String path) async {
-    if (!_isSSHConnected) return;
+    // ✅ 修复：支持本地模式和SSH模式
+    if (!_isLocalMode && !_isSSHConnected) {
+      debugPrint('❌ 未连接到SSH服务器且不在本地模式');
+      return;
+    }
 
     try {
       _isLoading = true;
       notifyListeners();
 
-      // ✅ 关键修复：将耗时的SSH操作放到后台执行，避免阻塞UI线程
-      // 使用compute或直接在后台执行，这里使用Future.delayed(0)让出UI线程
-      await Future.delayed(Duration.zero);
+      List<MediaFile> files;
       
-      final files = await _sshService.listDirectory(path);
+      if (_isLocalMode) {
+        // ✅ 本地模式：使用Dart Directory API
+        debugPrint('📁 本地模式：扫描目录 $path');
+        await Future.delayed(Duration.zero);
+        
+        final directory = Directory(path);
+        if (!await directory.exists()) {
+          debugPrint('❌ 目录不存在: $path');
+          _isLoading = false;
+          notifyListeners();
+          return;
+        }
+        
+        final entities = await directory.list().toList();
+        files = entities.map((entity) {
+          try {
+            final stat = entity.statSync();
+            final isDir = stat.type == FileSystemEntityType.directory;
+            final fileName = entity.path.split('/').lastWhere(
+              (segment) => segment.isNotEmpty,
+              orElse: () => entity.path,
+            );
+            
+            return MediaFile(
+              path: entity.path,
+              name: fileName,
+              isDirectory: isDir,
+              size: isDir ? null : stat.size,
+            );
+          } catch (e) {
+            debugPrint('⚠️ 跳过无法访问的项目: ${entity.path}');
+            return null;
+          }
+        }).whereType<MediaFile>().toList();
+        
+        debugPrint('📊 本地目录扫描完成，找到 ${files.length} 个项目');
+      } else {
+        // ✅ SSH模式：使用SSH服务
+        debugPrint('🌐 SSH模式：扫描目录 $path');
+        await Future.delayed(Duration.zero);
+        files = await _sshService.listDirectory(path);
+      }
+      
       final mediaFiles = files.where((f) => f.isMedia).toList();
       mediaFiles.sort((a, b) => a.name.compareTo(b.name));
+      
+      debugPrint('🎵 发现 ${mediaFiles.length} 个媒体文件');
       
       // ✅ 分批添加到播放列表，每次添加后让出控制权给UI线程
       const batchSize = 50; // 每批处理50个文件
@@ -920,8 +966,9 @@ class AppProvider extends ChangeNotifier {
       }
       
       debugPrint('✅ 播放列表添加完成，共 ${mediaFiles.length} 个文件');
-    } catch (e) {
-      debugPrint('添加目录到播放列表失败: $e');
+    } catch (e, stackTrace) {
+      debugPrint('❌ 添加目录到播放列表失败: $e');
+      debugPrint('📚 堆栈: $stackTrace');
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -1739,6 +1786,8 @@ class AppProvider extends ChangeNotifier {
     }
   }
 }
+
+
 
 
 
