@@ -57,13 +57,14 @@ class MediaFile {
     );
   }
 
-  factory MediaFile.file(String path, String name, {int? size, DateTime? modified}) {
+  factory MediaFile.file(String path, String name, {int? size, DateTime? modified, FileSourceType sourceType = FileSourceType.local}) {
     return MediaFile(
       path: path,
       name: name,
       isDirectory: false,
       size: size,
       modified: modified,
+      sourceType: sourceType, // ✅ 新增：支持设置来源类型
     );
   }
 
