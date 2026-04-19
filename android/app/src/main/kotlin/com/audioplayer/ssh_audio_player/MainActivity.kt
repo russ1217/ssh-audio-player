@@ -226,7 +226,14 @@ class MainActivity : FlutterActivity() {
         // ✅ 注销广播接收器
         unregisterMediaControlReceiver()
         
-        println("✅ MainActivity 完全销毁")
+        println("✅ MainActivity 清理完成")
+        
+        // ✅ 关键修复：延迟200ms后强制杀死进程
+        // 给Service足够时间执行onDestroy,然后强制杀死整个进程
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            println("💀 MainActivity: 强制杀死应用进程")
+            android.os.Process.killProcess(android.os.Process.myPid())
+        }, 200)
     }
 
 }

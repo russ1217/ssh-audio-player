@@ -104,7 +104,14 @@ class BackgroundPlayerService : Service() {
         
         // ✅ 立即停止服务
         stopSelf()
-        println("✅ 服务已完全停止")
+        println("✅ 服务已请求停止")
+        
+        // ✅ 关键修复：延迟100ms后强制杀死进程，确保所有资源都被清理
+        // 这样可以防止Flutter引擎或音频播放器继续在后台运行
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            println("💀 强制杀死应用进程")
+            android.os.Process.killProcess(android.os.Process.myPid())
+        }, 100)
     }
 
     override fun onDestroy() {
@@ -134,7 +141,14 @@ class BackgroundPlayerService : Service() {
             println("⚠️ 停止前台服务失败: ${e.message}")
         }
         
-        println("✅ BackgroundPlayerService 完全销毁")
+        println("✅ BackgroundPlayerService 清理完成")
+        
+        // ✅ 关键修复：延迟100ms后强制杀死进程，确保音频播放器无法继续运行
+        // 这是最后的保障，防止任何后台线程继续播放
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            println("💀 onDestroy: 强制杀死应用进程")
+            android.os.Process.killProcess(android.os.Process.myPid())
+        }, 100)
     }
 
     override fun onBind(intent: Intent?): IBinder? {
