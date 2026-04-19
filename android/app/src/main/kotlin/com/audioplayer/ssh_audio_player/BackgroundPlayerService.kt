@@ -82,15 +82,42 @@ class BackgroundPlayerService : Service() {
      */
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
-        println("🛑 应用被用户从最近任务中移除，停止服务和播放")
+        println("🛑 应用被用户从最近任务中移除，立即停止服务和播放")
+        
+        // ✅ 关键修复：先释放 Wake Lock，让 CPU 可以休眠
+        if (wakeLock.isHeld) {
+            wakeLock.release()
+            println("🔓 Wake Lock 已释放")
+        }
+        
+        // ✅ 停止 MediaSession
+        releaseMediaSession()
+        
+        // ✅ 取消网络回调
+        unregisterNetworkCallback()
+        
+        // ✅ 清除引用
+        MediaSessionHelper.backgroundService = null
+        
+        // ✅ 停止前台服务（会同时移除通知）
+        stopForeground(true)
+        
+        // ✅ 立即停止服务
         stopSelf()
+        println("✅ 服务已完全停止")
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        println("🗑️ BackgroundPlayerService onDestroy 被调用")
+        
+        // ✅ 确保释放 Wake Lock
         if (wakeLock.isHeld) {
             wakeLock.release()
+            println("🔓 Wake Lock 已释放")
         }
+        
+        // ✅ 取消网络回调
         unregisterNetworkCallback()
         
         // ✅ 清理 MediaSession
@@ -98,6 +125,16 @@ class BackgroundPlayerService : Service() {
         
         // ✅ 清除引用
         MediaSessionHelper.backgroundService = null
+        
+        // ✅ 停止前台服务
+        try {
+            stopForeground(true)
+            println("✅ 前台服务已停止")
+        } catch (e: Exception) {
+            println("⚠️ 停止前台服务失败: ${e.message}")
+        }
+        
+        println("✅ BackgroundPlayerService 完全销毁")
     }
 
     override fun onBind(intent: Intent?): IBinder? {

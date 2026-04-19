@@ -277,20 +277,33 @@ class _CurrentPlaylistTabState extends State<_CurrentPlaylistTab> {
           final viewportHeight = _scrollController.position.viewportDimension;
           final maxScroll = _scrollController.position.maxScrollExtent;
           
-          // 根据实际测量,ListTile的实际渲染高度约72px
-          // 包括: ListTile内容(~56px) + 上下padding(~16px)
-          final itemHeight = 72.0;
+          // 使用固定的item高度(与Container设置的height一致)
+          const fixedItemHeight = 72.0;
+          final totalItems = provider.playlist.length.toDouble();
           
-          // 计算目标位置,使目标项的中心对齐到视口中心
-          // 要让目标项居中: targetPosition + viewportHeight/2 = itemTopPosition + itemHeight/2
-          // 所以: targetPosition = itemTopPosition + itemHeight/2 - viewportHeight/2
-          final itemTopPosition = provider.currentIndex * itemHeight;
-          final targetPosition = itemTopPosition + (itemHeight / 2) - (viewportHeight / 2);
+          // 计算目标项的顶部位置
+          final itemTopPosition = provider.currentIndex * fixedItemHeight;
           
-          // 确保不超出边界
+          // 要让目标项居中: 滚动位置 = 目标项顶部 - (视口高度/2 - item高度/2)
+          // 这样目标项的中心会对齐到视口中心
+          final centerOffset = (viewportHeight / 2) - (fixedItemHeight / 2);
+          var targetPosition = itemTopPosition - centerOffset;
+          
+          // 关键修正: 如果目标位置会超出最大滚动范围,就调整策略
+          // 对于靠近末尾的项,确保它能完全显示在视口中即可
+          if (targetPosition > maxScroll) {
+            // 目标项在视口底部附近,滚动到能让它完全显示的位置
+            targetPosition = maxScroll;
+          } else if (targetPosition < 0) {
+            // 目标项在视口顶部附近
+            targetPosition = 0;
+          }
+          
+          // 确保不超出边界(双重保险)
           final clampedPosition = targetPosition.clamp(0.0, maxScroll);
           
-          print('📜 计算详情 - itemTopPosition: ${itemTopPosition.toStringAsFixed(2)}, itemHeight: $itemHeight');
+          print('📜 固定高度 - item高度: $fixedItemHeight, 项目数: $totalItems');
+          print('📜 计算详情 - itemTopPosition: ${itemTopPosition.toStringAsFixed(2)}, centerOffset: ${centerOffset.toStringAsFixed(2)}');
           print('📜 滚动参数 - 目标位置: ${targetPosition.toStringAsFixed(2)}, 夹紧后: ${clampedPosition.toStringAsFixed(2)}');
           print('📜 视口高度: ${viewportHeight.toStringAsFixed(2)}, 最大滚动: ${maxScroll.toStringAsFixed(2)}');
           print('📜 当前滚动: ${currentScroll.toStringAsFixed(2)}, 需要移动: ${(clampedPosition - currentScroll).toStringAsFixed(2)}');
@@ -407,8 +420,8 @@ class _CurrentPlaylistTabState extends State<_CurrentPlaylistTab> {
 
                     return Container(
                       key: _getItemKey(index),
+                      height: 72, // 固定高度,确保计算准确
                       child: ListTile(
-                        key: ValueKey(file.path),
                         onTap: () {
                           provider.playFromPlaylist(index);
                         },
@@ -425,6 +438,8 @@ class _CurrentPlaylistTabState extends State<_CurrentPlaylistTab> {
                         ),
                         title: Text(
                           file.name,
+                          maxLines: 1, // 限制为一行
+                          overflow: TextOverflow.ellipsis, // 超出部分显示省略号
                           style: TextStyle(
                             fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal,
                             color: isPlaying ? Theme.of(context).colorScheme.primary : null,

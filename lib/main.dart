@@ -142,7 +142,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   /// 停止前台服务和播放器
   Future<void> _stopForegroundServiceAndPlayer() async {
-    debugPrint('🛑 应用被销毁，停止前台服务和播放器...');
+    debugPrint('🛑 应用被销毁，立即停止前台服务和播放器...');
     
     try {
       // ✅ 关键修复：先获取 AppProvider 并停止音频播放
@@ -150,23 +150,44 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       if (context != null) {
         try {
           final provider = context.read<AppProvider>();
-          await provider.stopPlayback();
+          // ✅ 使用timeout防止阻塞，最多等待2秒
+          await provider.stopPlayback().timeout(
+            const Duration(seconds: 2),
+            onTimeout: () {
+              debugPrint('⚠️ 停止播放超时，继续执行');
+            },
+          );
           debugPrint('✅ 音频播放器已停止');
         } catch (e) {
           debugPrint('⚠️ 停止音频播放器失败: $e');
         }
       }
       
-      // 停止前台服务
+      // ✅ 关键修复：立即停止前台服务（不等待）
       if (_isForegroundServiceRunning) {
-        await BackgroundService.stop();
-        _isForegroundServiceRunning = false;
-        debugPrint('✅ 前台服务已停止');
+        // ✅ 使用timeout防止阻塞
+        BackgroundService.stop().timeout(
+          const Duration(seconds: 1),
+          onTimeout: () {
+            debugPrint('⚠️ 停止前台服务超时，继续执行');
+          },
+        ).then((_) {
+          _isForegroundServiceRunning = false;
+          debugPrint('✅ 前台服务已停止');
+        }).catchError((e) {
+          debugPrint('⚠️ 停止前台服务失败: $e');
+        });
       }
       
-      // 隐藏通知
-      _notificationService.hideNotification();
-      debugPrint('✅ 通知已隐藏');
+      // ✅ 立即隐藏通知（同步操作）
+      try {
+        _notificationService.hideNotification();
+        debugPrint('✅ 通知已隐藏');
+      } catch (e) {
+        debugPrint('⚠️ 隐藏通知失败: $e');
+      }
+      
+      debugPrint('✅ 应用清理完成');
     } catch (e) {
       debugPrint('⚠️ 停止服务时出错: $e');
     }
