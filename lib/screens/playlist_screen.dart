@@ -347,6 +347,9 @@ class _CurrentPlaylistTabState extends State<_CurrentPlaylistTab> {
                   
                   return ListTile(
                     key: ValueKey(file.path),
+                    onTap: () {
+                      provider.playFromPlaylist(index);
+                    },
                     leading: CircleAvatar(
                       backgroundColor: isPlaying
                           ? Theme.of(context).colorScheme.primary
