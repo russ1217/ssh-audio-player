@@ -930,26 +930,8 @@ class AppProvider extends ChangeNotifier {
   Future<void> stopPlayback() async {
     debugPrint('🛑 开始停止播放...');
     
-    try {
-      // ✅ 关键修复：并行停止所有服务，加快速度
-      await Future.wait([
-        _audioPlayerService.stop().timeout(
-          const Duration(seconds: 1),
-          onTimeout: () => Future.value(),
-        ),
-        _streamingService.stop().timeout(
-          const Duration(seconds: 1),
-          onTimeout: () => Future.value(),
-        ),
-      ]).timeout(
-        const Duration(seconds: 2),
-        onTimeout: () => Future.value(),
-      );
-      
-      debugPrint('✅ 音频播放已停止');
-    } catch (e) {
-      debugPrint('⚠️ 停止音频播放失败: $e');
-    }
+    await _audioPlayerService.stop();
+    await _streamingService.stop();
     
     _isPlaying = false;
     _currentPlayingFile = null;
@@ -958,12 +940,9 @@ class AppProvider extends ChangeNotifier {
     // ✅ 更新 MediaSession 播放状态为停止
     _updateMediaSessionPlaybackState(isPlaying: false);
     
-    // ✅ 关键修复：立即停止后台前台服务
+    // ✅ 关键修复：停止后台前台服务，防止杀掉app后继续播放
     try {
-      await BackgroundService.stop().timeout(
-        const Duration(seconds: 1),
-        onTimeout: () => Future.value(),
-      );
+      await BackgroundService.stop();
       debugPrint('🛑 后台服务已停止');
     } catch (e) {
       debugPrint('⚠️ 停止后台服务失败: $e');
@@ -2016,6 +1995,8 @@ class AppProvider extends ChangeNotifier {
     }
   }
 }
+
+
 
 
 
