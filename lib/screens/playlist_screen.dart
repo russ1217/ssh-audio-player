@@ -313,24 +313,33 @@ class _CurrentPlaylistTabState extends State<_CurrentPlaylistTab> {
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                     ),
-                    border: Border(
-                      bottom: BorderSide(
-                        color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
-                        width: 2,
-                      ),
-                    ),
                   ),
-                  child: Text(
-                    provider.currentPlayingFile!.name,
-                    textAlign: TextAlign.center,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.primary,
-                      height: 1.2,
-                    ),
+                  child: Row(
+                    children: [
+                      // 音频/视频图标
+                      Icon(
+                        provider.currentPlayingFile!.isVideo
+                            ? Icons.movie
+                            : Icons.music_note,
+                        size: 18,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      // 文件名称
+                      Expanded(
+                        child: Text(
+                          provider.currentPlayingFile!.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.primary,
+                            height: 1.2,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
