@@ -84,71 +84,74 @@ class BackgroundPlayerService : Service() {
         super.onTaskRemoved(rootIntent)
         println("🛑 应用被用户从最近任务中移除，立即停止服务和播放")
         
-        // ✅ 关键修复：先释放 Wake Lock，让 CPU 可以休眠
-        if (wakeLock.isHeld) {
-            wakeLock.release()
-            println("🔓 Wake Lock 已释放")
+        try {
+            // ✅ 关键修复：先释放 Wake Lock，让 CPU 可以休眠
+            if (wakeLock.isHeld) {
+                wakeLock.release()
+                println("🔓 Wake Lock 已释放")
+            }
+            
+            // ✅ 停止 MediaSession
+            releaseMediaSession()
+            
+            // ✅ 取消网络回调
+            unregisterNetworkCallback()
+            
+            // ✅ 清除引用
+            MediaSessionHelper.backgroundService = null
+            
+            // ✅ 停止前台服务（会同时移除通知）
+            stopForeground(true)
+            
+            // ✅ 立即停止服务
+            stopSelf()
+            println("✅ 服务已请求停止")
+        } catch (e: Exception) {
+            println("⚠️ 清理过程中出错: ${e.message}")
         }
         
-        // ✅ 停止 MediaSession
-        releaseMediaSession()
-        
-        // ✅ 取消网络回调
-        unregisterNetworkCallback()
-        
-        // ✅ 清除引用
-        MediaSessionHelper.backgroundService = null
-        
-        // ✅ 停止前台服务（会同时移除通知）
-        stopForeground(true)
-        
-        // ✅ 立即停止服务
-        stopSelf()
-        println("✅ 服务已请求停止")
-        
-        // ✅ 关键修复：延迟100ms后强制杀死进程，确保所有资源都被清理
-        // 这样可以防止Flutter引擎或音频播放器继续在后台运行
-        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-            println("💀 强制杀死应用进程")
-            android.os.Process.killProcess(android.os.Process.myPid())
-        }, 100)
+        // ✅ 关键修复：立即强制杀死进程，不等待任何延迟
+        // Handler.postDelayed可能因为Looper问题而不执行，直接kill更可靠
+        println("💀 立即强制杀死应用进程")
+        android.os.Process.killProcess(android.os.Process.myPid())
     }
 
     override fun onDestroy() {
         super.onDestroy()
         println("🗑️ BackgroundPlayerService onDestroy 被调用")
         
-        // ✅ 确保释放 Wake Lock
-        if (wakeLock.isHeld) {
-            wakeLock.release()
-            println("🔓 Wake Lock 已释放")
-        }
-        
-        // ✅ 取消网络回调
-        unregisterNetworkCallback()
-        
-        // ✅ 清理 MediaSession
-        releaseMediaSession()
-        
-        // ✅ 清除引用
-        MediaSessionHelper.backgroundService = null
-        
-        // ✅ 停止前台服务
         try {
-            stopForeground(true)
-            println("✅ 前台服务已停止")
+            // ✅ 确保释放 Wake Lock
+            if (wakeLock.isHeld) {
+                wakeLock.release()
+                println("🔓 Wake Lock 已释放")
+            }
+            
+            // ✅ 取消网络回调
+            unregisterNetworkCallback()
+            
+            // ✅ 清理 MediaSession
+            releaseMediaSession()
+            
+            // ✅ 清除引用
+            MediaSessionHelper.backgroundService = null
+            
+            // ✅ 停止前台服务
+            try {
+                stopForeground(true)
+                println("✅ 前台服务已停止")
+            } catch (e: Exception) {
+                println("⚠️ 停止前台服务失败: ${e.message}")
+            }
+            
+            println("✅ BackgroundPlayerService 清理完成")
         } catch (e: Exception) {
-            println("⚠️ 停止前台服务失败: ${e.message}")
+            println("⚠️ onDestroy清理过程中出错: ${e.message}")
         }
         
-        println("✅ BackgroundPlayerService 清理完成")
-        
-        // ✅ 关键修复：延迟100ms后强制杀死进程，确保音频播放器无法继续运行
-        // 这是最后的保障，防止任何后台线程继续播放
-        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-            println("💀 onDestroy: 强制杀死应用进程")
-            android.os.Process.killProcess(android.os.Process.myPid())
-        }, 100)
+        // ✅ 关键修复：立即强制杀死进程，不等待任何延迟
+        println("💀 onDestroy: 立即强制杀死应用进程")
+        android.os.Process.killProcess(android.os.Process.myPid())
     }
 
     override fun onBind(intent: Intent?): IBinder? {

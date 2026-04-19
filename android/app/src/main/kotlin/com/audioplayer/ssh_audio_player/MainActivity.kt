@@ -213,9 +213,9 @@ class MainActivity : FlutterActivity() {
         super.onDestroy()
         println("🗑️ MainActivity onDestroy 被调用")
         
-        // ✅ 关键修复：Activity销毁时也要停止前台服务
-        // 这确保了即使服务还在启动过程中，也能被正确停止
         try {
+            // ✅ 关键修复：Activity销毁时也要停止前台服务
+            // 这确保了即使服务还在启动过程中，也能被正确停止
             val serviceIntent = Intent(this, BackgroundPlayerService::class.java)
             stopService(serviceIntent)
             println("✅ MainActivity: 已请求停止后台服务")
@@ -223,17 +223,18 @@ class MainActivity : FlutterActivity() {
             println("⚠️ MainActivity: 停止服务失败: ${e.message}")
         }
         
-        // ✅ 注销广播接收器
-        unregisterMediaControlReceiver()
+        try {
+            // ✅ 注销广播接收器
+            unregisterMediaControlReceiver()
+        } catch (e: Exception) {
+            println("⚠️ MainActivity: 注销广播接收器失败: ${e.message}")
+        }
         
         println("✅ MainActivity 清理完成")
         
-        // ✅ 关键修复：延迟200ms后强制杀死进程
-        // 给Service足够时间执行onDestroy,然后强制杀死整个进程
-        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-            println("💀 MainActivity: 强制杀死应用进程")
-            android.os.Process.killProcess(android.os.Process.myPid())
-        }, 200)
+        // ✅ 关键修复：立即强制杀死进程，不等待任何延迟
+        println("💀 MainActivity: 立即强制杀死应用进程")
+        android.os.Process.killProcess(android.os.Process.myPid())
     }
 
 }
