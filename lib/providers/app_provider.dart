@@ -488,12 +488,18 @@ class AppProvider extends ChangeNotifier {
   Future<void> forceRefreshCurrentDirectory() async {
     debugPrint('🔄 强制刷新当前目录: $_currentPath (本地模式: $_isLocalMode, SSH连接: $_isSSHConnected)');
     
+    // ✅ 关键修复：如果loading状态异常卡住，先重置它
+    if (_isLoading && _currentFiles.isNotEmpty) {
+      debugPrint('⚠️ 检测到异常的loading状态（文件已加载），强制重置');
+      _isLoading = false;
+    }
+    
     // 增加刷新计数器，触发UI重新构建
     _refreshCounter++;
     
-    // 如果文件列表为空或loading状态异常，主动加载目录
-    if (_currentFiles.isEmpty || _isLoading) {
-      debugPrint('📂 文件列表为空或loading异常，重新加载目录');
+    // 如果文件列表为空，主动加载目录
+    if (_currentFiles.isEmpty) {
+      debugPrint('📂 文件列表为空，重新加载目录');
       await _loadCurrentDirectory();
     } else {
       debugPrint('✅ 文件列表已有数据，仅通知UI刷新');
@@ -1936,6 +1942,8 @@ class AppProvider extends ChangeNotifier {
     }
   }
 }
+
+
 
 
 
