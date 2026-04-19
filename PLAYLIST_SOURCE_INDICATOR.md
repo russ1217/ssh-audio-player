@@ -97,3 +97,96 @@
 ✅ **响应式布局**：适配不同屏幕尺寸
 ✅ **性能优化**：仅在 UI 层增加轻量级 Widget
 
+
+## 代码示例
+
+### MediaFile 使用示例
+
+```dart
+// 创建本地文件
+final localFile = MediaFile(
+  path: '/storage/emulated/0/Music/song.mp3',
+  name: 'song.mp3',
+  isDirectory: false,
+  sourceType: FileSourceType.local,
+);
+
+// 创建 SSH 远程文件
+final sshFile = MediaFile(
+  path: '/home/user/music/remote.mp3',
+  name: 'remote.mp3',
+  isDirectory: false,
+  sourceType: FileSourceType.ssh,
+);
+
+// 判断文件类型
+if (file.isSSHFile) {
+  print('这是 SSH 远程文件');
+}
+
+if (file.isLocalFile) {
+  print('这是本地文件');
+}
+```
+
+### UI 显示示例
+
+```dart
+// 在 ListTile 的 subtitle 中显示来源标识
+subtitle: Row(
+  children: [
+    if (file.isSSHFile)
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: Colors.blue.shade50,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: Colors.blue.shade200),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.cloud, size: 12, color: Colors.blue.shade700),
+            const SizedBox(width: 3),
+            Text('SSH', style: TextStyle(
+              fontSize: 10,
+              color: Colors.blue.shade700,
+              fontWeight: FontWeight.w600,
+            )),
+          ],
+        ),
+      ),
+    if (file.isLocalFile)
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: Colors.green.shade50,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: Colors.green.shade200),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.phone_android, size: 12, color: Colors.green.shade700),
+            const SizedBox(width: 3),
+            Text('本地', style: TextStyle(
+              fontSize: 10,
+              color: Colors.green.shade700,
+              fontWeight: FontWeight.w600,
+            )),
+          ],
+        ),
+      ),
+    // ... 其他信息
+  ],
+),
+```
+
+## 未来优化建议
+
+1. **图标自定义**：允许用户自定义来源标识的图标和颜色
+2. **更多来源类型**：支持网络流媒体、云存储等更多来源
+3. **统计信息**：在播放列表顶部显示本地文件和 SSH 文件的数量统计
+4. **过滤功能**：提供按来源类型过滤播放列表的功能
+5. **批量操作**：支持按来源类型批量移除或管理文件
+
