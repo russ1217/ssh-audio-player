@@ -210,7 +210,7 @@ class BackgroundPlayerService : Service() {
             )
         }
         
-        // 构建通知
+        // ✅ 关键修复：使用 MediaStyle 以支持蓝牙设备和锁屏控制
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(currentTitle)
             .setContentText("SSH Player - Playing")
@@ -218,7 +218,7 @@ class BackgroundPlayerService : Service() {
             .setContentIntent(pendingIntent)
             .setOngoing(true) // 设置为持续通知，防止被清除
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC) // 锁屏可见
-            // ✅ 添加媒体控制按钮 (标准通知样式)
+            // ✅ 添加媒体控制按钮
             .addAction(
                 android.R.drawable.ic_media_previous,
                 "Previous",
@@ -234,6 +234,11 @@ class BackgroundPlayerService : Service() {
                 android.R.drawable.ic_menu_close_clear_cancel,
                 "Stop",
                 stopIntent
+            )
+            // ✅ 关键：设置 MediaStyle（不关联MediaSession，避免兼容性问题）
+            .setStyle(
+                androidx.media.app.NotificationCompat.MediaStyle()
+                    .setShowActionsInCompactView(0, 1, 2) // 在紧凑视图中显示前3个按钮
             )
     }
     

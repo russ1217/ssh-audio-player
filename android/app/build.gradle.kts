@@ -39,6 +39,13 @@ android {
     }
 }
 
+dependencies {
+    implementation("androidx.core:core-ktx:1.12.0")
+    implementation("androidx.appcompat:appcompat:1.6.1")
+    // ✅ 媒体控制支持（用于MediaStyle通知和蓝牙设备）
+    implementation("androidx.media:media:1.7.0")
+}
+
 flutter {
     source = "../.."
 }
