@@ -61,11 +61,55 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class FileBrowserScreen extends StatelessWidget {
+class FileBrowserScreen extends StatefulWidget {
   const FileBrowserScreen({super.key});
 
   @override
+  State<FileBrowserScreen> createState() => _FileBrowserScreenState();
+}
+
+class _FileBrowserScreenState extends State<FileBrowserScreen> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    // ✅ 监听应用生命周期，当页面可见时检查并重置异常的loading状态
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // ✅ 当应用恢复前台时，重置可能卡住的loading状态
+    if (state == AppLifecycleState.resumed) {
+      _checkAndResetLoading();
+    }
+  }
+
+  /// ✅ 检查并重置异常的loading状态
+  void _checkAndResetLoading() {
+    final provider = context.read<AppProvider>();
+    
+    // 如果isLoading为true但文件列表已加载完成，说明状态异常
+    if (provider.isLoading && provider.currentFiles.isNotEmpty) {
+      debugPrint('⚠️ 检测到异常的loading状态，强制重置');
+      provider.resetLoadingState();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    // ✅ 每次build时也检查一次（处理从其他标签页返回的情况）
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _checkAndResetLoading();
+      }
+    });
+    
     return Scaffold(
       appBar: AppBar(
         title: Consumer<AppProvider>(

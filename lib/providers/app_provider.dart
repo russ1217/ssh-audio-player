@@ -364,6 +364,15 @@ class AppProvider extends ChangeNotifier {
     await _loadSSHConfigs();
   }
 
+  /// ✅ 强制重置加载状态（用于修复UI卡住的问题）
+  void resetLoadingState() {
+    if (_isLoading) {
+      debugPrint('⚠️ 强制重置加载状态');
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
   // SSH 连接管理
   Future<bool> connectSSH(SSHConfig config) async {
     try {
@@ -1891,6 +1900,8 @@ class AppProvider extends ChangeNotifier {
     }
   }
 }
+
+
 
 
 
