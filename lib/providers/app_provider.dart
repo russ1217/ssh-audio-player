@@ -1558,6 +1558,9 @@ class AppProvider extends ChangeNotifier {
     _currentIndex = 0;
     _currentPlayingFile = null;
     
+    debugPrint('📋 开始加载播放列表: ${playlist.name}');
+    debugPrint('📊 播放列表中共有 ${playlist.items.length} 个项目');
+    
     // ✅ 关键修复：分批添加文件到播放列表，避免UI阻塞
     const batchSize = 100; // 每批处理100个文件
     final totalItems = playlist.items.length;
@@ -1567,7 +1570,12 @@ class AppProvider extends ChangeNotifier {
       final batch = playlist.items.sublist(i, end);
       
       for (final item in batch) {
-        _playlist.add(MediaFile.file(item.filePath, item.fileName));
+        final mediaFile = MediaFile.file(item.filePath, item.fileName);
+        
+        // ✅ 添加调试日志：验证文件对象属性
+        debugPrint('📄 加载文件: name=${mediaFile.name}, path=${mediaFile.path}, isMedia=${mediaFile.isMedia}, isAudio=${mediaFile.isAudio}, isVideo=${mediaFile.isVideo}');
+        
+        _playlist.add(mediaFile);
       }
       
       // 让出控制权给UI线程，保持界面响应
@@ -1585,7 +1593,7 @@ class AppProvider extends ChangeNotifier {
   /// 从播放列表中播放指定索引的歌曲
   Future<void> playFromPlaylist(int index) async {
     if (index < 0 || index >= _playlist.length) {
-      debugPrint('❌ 无效的播放列表索引: $index');
+      debugPrint('❌ 无效的播放列表索引: $index (列表长度: ${_playlist.length})');
       return;
     }
     
@@ -1593,7 +1601,12 @@ class AppProvider extends ChangeNotifier {
     final file = _playlist[index];
     _currentPlayingFile = file;
     
-    debugPrint('▶️ 从播放列表播放: ${file.name} (索引: $index)');
+    // ✅ 添加详细调试日志
+    debugPrint('▶️ 从播放列表播放: ${file.name}');
+    debugPrint('📍 文件路径: ${file.path}');
+    debugPrint('🎵 isMedia: ${file.isMedia}, isAudio: ${file.isAudio}, isVideo: ${file.isVideo}');
+    debugPrint('📂 isDirectory: ${file.isDirectory}');
+    
     await playMedia(file);
   }
 
@@ -1786,6 +1799,10 @@ class AppProvider extends ChangeNotifier {
     }
   }
 }
+
+
+
+
 
 
 
