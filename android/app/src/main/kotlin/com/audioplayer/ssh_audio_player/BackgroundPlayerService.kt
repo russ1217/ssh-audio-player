@@ -236,6 +236,7 @@ class BackgroundPlayerService : Service() {
                 stopIntent
             )
             // ✅ 关键：设置 MediaStyle（不关联MediaSession，避免兼容性问题）
+            // 注意：蓝牙设备通过 MediaSession 获取元数据，而不是通过通知
             .setStyle(
                 androidx.media.app.NotificationCompat.MediaStyle()
                     .setShowActionsInCompactView(0, 1, 2) // 在紧凑视图中显示前3个按钮
@@ -280,6 +281,8 @@ class BackgroundPlayerService : Service() {
      */
     fun updateMediaMetadata(title: String, artist: String?, album: String?, duration: Long) {
         try {
+            println("📻 开始更新媒体元数据: title=$title, artist=$artist, duration=$duration")
+            
             mediaSession?.let { session ->
                 val metadata = MediaMetadata.Builder()
                     .putString(MediaMetadata.METADATA_KEY_TITLE, title)
@@ -289,11 +292,15 @@ class BackgroundPlayerService : Service() {
                     .build()
                 
                 session.setMetadata(metadata)
+                println("✅ MediaSession 元数据已设置: $title")
                 
                 // ✅ 同时更新通知
+                println("🔔 准备更新通知...")
                 updateNotification(title, isCurrentlyPlaying)
                 
-                println("📻 MediaSession 元数据已更新: $title")
+                println("📻 MediaSession 元数据更新完成: $title")
+            } ?: run {
+                println("❌ MediaSession 未初始化，无法更新元数据")
             }
         } catch (e: Exception) {
             e.printStackTrace()

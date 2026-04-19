@@ -224,10 +224,17 @@ object MediaSessionHelper {
     var backgroundService: BackgroundPlayerService? = null
     
     fun updateMetadata(title: String, artist: String?, album: String?, duration: Long) {
-        backgroundService?.updateMediaMetadata(title, artist, album, duration)
+        println("📡 MediaSessionHelper.updateMetadata 被调用: title=$title")
+        if (backgroundService == null) {
+            println("❌ backgroundService 为 null，无法更新元数据")
+        } else {
+            println("✅ 找到 backgroundService 实例，开始更新")
+            backgroundService?.updateMediaMetadata(title, artist, album, duration)
+        }
     }
     
     fun updatePlaybackState(state: Int, position: Long, speed: Float) {
+        println("📡 MediaSessionHelper.updatePlaybackState 被调用: state=$state")
         backgroundService?.updatePlaybackState(state, position, speed)
     }
 }
