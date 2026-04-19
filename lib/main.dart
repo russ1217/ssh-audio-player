@@ -6,8 +6,8 @@ import 'screens/home_screen.dart';
 import 'services/notification_service.dart';
 import 'services/background_service.dart';
 
-// ✅ 全局NavigatorKey，用于在静态上下文中访问Provider
-final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+// ✅ 全局AppProvider引用，用于在静态上下文中访问
+AppProvider? _globalAppProvider;
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,39 +25,39 @@ void _initializeMediaControlListener() {
   // 设置回调函数，处理媒体控制命令
   MediaSessionService.onMediaControl = (action) {
     debugPrint('🎮 处理媒体控制命令: $action');
+    debugPrint('🔍 全局AppProvider: ${_globalAppProvider != null ? "有效" : "null"}');
     
-    // 通过全局NavigatorKey获取context，然后访问AppProvider
-    final context = _navigatorKey.currentContext;
-    if (context != null) {
+    if (_globalAppProvider != null) {
       try {
-        final appProvider = Provider.of<AppProvider>(context, listen: false);
+        debugPrint('✅ 使用全局AppProvider实例');
         
         switch (action) {
           case 'play':
           case 'pause':
             debugPrint('▶️/⏸️ 执行播放/暂停切换命令');
-            appProvider.togglePlayPause();
+            _globalAppProvider!.togglePlayPause();
             break;
           case 'stop':
             debugPrint('⏹️ 执行停止命令');
-            appProvider.stopPlayback();
+            _globalAppProvider!.stopPlayback();
             break;
           case 'next':
             debugPrint('⏭️ 执行下一曲命令');
-            appProvider.playNextInPlaylist();
+            _globalAppProvider!.playNextInPlaylist();
             break;
           case 'previous':
             debugPrint('⏮️ 执行上一曲命令');
-            appProvider.playPreviousInPlaylist();
+            _globalAppProvider!.playPreviousInPlaylist();
             break;
           default:
             debugPrint('⚠️ 未知的控制命令: $action');
         }
-      } catch (e) {
+      } catch (e, stackTrace) {
         debugPrint('❌ 处理媒体控制命令失败: $e');
+        debugPrint('📋 堆栈跟踪: $stackTrace');
       }
     } else {
-      debugPrint('⚠️ 无法获取BuildContext，跳过控制命令');
+      debugPrint('⚠️ 全局AppProvider为null，跳过控制命令');
     }
   };
   
@@ -209,7 +209,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) => AppProvider(),
+      create: (_) {
+        final provider = AppProvider();
+        // ✅ 设置全局AppProvider引用
+        _globalAppProvider = provider;
+        debugPrint('✅ 全局AppProvider已设置');
+        return provider;
+      },
       child: MaterialApp(
         navigatorKey: _navigatorKey,
         title: 'SSH Player for Russ',
