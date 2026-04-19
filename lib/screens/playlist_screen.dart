@@ -265,29 +265,36 @@ class _CurrentPlaylistTab extends StatelessWidget {
         return Column(
           children: [
             // ✅ 新增：正在播放的曲目信息显示区域（高亮居中）
-            if (provider.currentPlayingFile != null)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
-                      Theme.of(context).colorScheme.primaryContainer.withOpacity(0.1),
-                    ],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                  ),
-                  border: Border(
-                    bottom: BorderSide(
-                      color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
-                      width: 2,
-                    ),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: provider.currentPlayingFile != null
+                      ? [
+                          Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+                          Theme.of(context).colorScheme.primaryContainer.withOpacity(0.1),
+                        ]
+                      : [
+                          Colors.grey.shade100,
+                          Colors.grey.shade50,
+                        ],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+                border: Border(
+                  bottom: BorderSide(
+                    color: provider.currentPlayingFile != null
+                        ? Theme.of(context).colorScheme.primary.withOpacity(0.3)
+                        : Colors.grey.shade300,
+                    width: 2,
                   ),
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (provider.currentPlayingFile != null) ...[
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -320,9 +327,30 @@ class _CurrentPlaylistTab extends StatelessWidget {
                         height: 1.3,
                       ),
                     ),
+                  ] else ...[
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          color: Colors.grey.shade600,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '暂无正在播放的曲目',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey.shade600,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
-                ),
+                ],
               ),
+            ),
             const Divider(height: 1),
             // 播放列表
             Expanded(
