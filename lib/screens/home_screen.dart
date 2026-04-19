@@ -114,6 +114,37 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> with WidgetsBindi
     }
   }
 
+  /// ✅ 强制检查并修复loading状态（每次build都调用）
+  void _forceCheckAndFixLoading() {
+    final provider = context.read<AppProvider>();
+    
+    // 如果isLoading为true，无论文件列表是否为空，都强制重置
+    if (provider.isLoading) {
+      debugPrint('🔧 [强制] 检测到isLoading=true，立即重置');
+      provider.resetLoadingState();
+      
+      // 重置后，如果文件列表仍为空，主动触发加载
+      if (provider.currentFiles.isEmpty) {
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (mounted) {
+            debugPrint('🔄 [强制] 文件列表为空，主动加载目录: ${provider.currentPath}');
+            
+            if (provider.isLocalMode) {
+              // 本地模式：加载默认目录
+              provider.navigateTo(provider.currentPath);
+            } else if (provider.isSSHConnected) {
+              // SSH模式：加载当前路径
+              provider.navigateTo(provider.currentPath);
+            } else {
+              // SSH未连接：建议切换到本地模式
+              debugPrint('⚠️ SSH未连接，请切换到本地模式或连接SSH');
+            }
+          }
+        });
+      }
+    }
+  }
+
   /// ✅ 检查并重置异常的loading状态
   void _checkAndResetLoading() {
     final provider = context.read<AppProvider>();
@@ -148,10 +179,11 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> with WidgetsBindi
 
   @override
   Widget build(BuildContext context) {
-    // ✅ 每次build时也检查一次（处理从其他标签页返回的情况）
+    // ✅ 关键修复：每次build时都检查loading状态（比didChangeDependencies更可靠）
+    // 使用SchedulerBinding确保在帧绘制前执行
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        _checkAndResetLoading();
+        _forceCheckAndFixLoading();
       }
     });
     
