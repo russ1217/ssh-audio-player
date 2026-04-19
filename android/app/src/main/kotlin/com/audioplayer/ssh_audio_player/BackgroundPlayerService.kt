@@ -9,8 +9,10 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaMetadata
-import android.media.session.MediaSession
-import android.media.session.PlaybackState
+import androidx.core.app.NotificationCompat
+import android.support.v4.media.MediaMetadataCompat
+import android.support.v4.media.session.MediaSessionCompat
+import android.support.v4.media.session.PlaybackStateCompat
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -18,7 +20,6 @@ import android.net.NetworkRequest
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
-import androidx.core.app.NotificationCompat
 
 class BackgroundPlayerService : Service() {
 
@@ -30,8 +31,8 @@ class BackgroundPlayerService : Service() {
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var connectivityManager: ConnectivityManager? = null
     
-    // ✅ MediaSession 用于向蓝牙设备广播媒体信息
-    private var mediaSession: MediaSession? = null
+    // ✅ MediaSessionCompat 用于向蓝牙设备广播媒体信息
+    private var mediaSession: MediaSessionCompat? = null
     
     // ✅ 当前播放状态（用于构建通知）
     private var currentTitle: String = "SSH Player"
@@ -98,23 +99,23 @@ class BackgroundPlayerService : Service() {
     }
 
     /**
-     * ✅ 初始化 MediaSession，使蓝牙设备能获取播放信息
+     * ✅ 初始化 MediaSessionCompat，使蓝牙设备能获取播放信息
      */
     private fun initializeMediaSession() {
         try {
-            mediaSession = MediaSession(this, "RussSSHPlayer").apply {
+            mediaSession = MediaSessionCompat(this, "RussSSHPlayer").apply {
                 // 设置会话标志位
-                setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS or 
-                        MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS)
+                setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or 
+                        MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS)
                 
                 // 设置初始播放状态（暂停）
-                val initialState = PlaybackState.Builder()
-                    .setState(PlaybackState.STATE_PAUSED, 0, 1.0f)
+                val initialState = PlaybackStateCompat.Builder()
+                    .setState(PlaybackStateCompat.STATE_PAUSED, 0, 1.0f)
                     .build()
                 setPlaybackState(initialState)
                 
                 // ✅ 设置 MediaSession 回调，处理来自通知栏和蓝牙设备的控制命令
-                setCallback(object : MediaSession.Callback() {
+                setCallback(object : MediaSessionCompat.Callback() {
                     override fun onPlay() {
                         super.onPlay()
                         println("▶️ MediaSession: 收到播放命令")
@@ -149,11 +150,11 @@ class BackgroundPlayerService : Service() {
                 // 激活会话
                 isActive = true
                 
-                println("✅ MediaSession 已初始化")
+                println("✅ MediaSessionCompat 已初始化")
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            println("❌ MediaSession 初始化失败: ${e.message}")
+            println("❌ MediaSessionCompat 初始化失败: ${e.message}")
         }
     }
 
@@ -210,7 +211,7 @@ class BackgroundPlayerService : Service() {
             )
         }
         
-        // ✅ 关键修复：使用 MediaStyle 以支持蓝牙设备和锁屏控制
+        // 恢复使用标准的 NotificationCompat，移除 MediaStyle 依赖
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(currentTitle)
             .setContentText("SSH Player - Playing")
@@ -218,7 +219,7 @@ class BackgroundPlayerService : Service() {
             .setContentIntent(pendingIntent)
             .setOngoing(true) // 设置为持续通知，防止被清除
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC) // 锁屏可见
-            // ✅ 添加媒体控制按钮
+            // 添加媒体控制按钮
             .addAction(
                 android.R.drawable.ic_media_previous,
                 "Previous",
@@ -234,12 +235,6 @@ class BackgroundPlayerService : Service() {
                 android.R.drawable.ic_menu_close_clear_cancel,
                 "Stop",
                 stopIntent
-            )
-            // ✅ 关键：设置 MediaStyle（不关联MediaSession，避免兼容性问题）
-            // 注意：蓝牙设备通过 MediaSession 获取元数据，而不是通过通知
-            .setStyle(
-                androidx.media.app.NotificationCompat.MediaStyle()
-                    .setShowActionsInCompactView(0, 1, 2) // 在紧凑视图中显示前3个按钮
             )
     }
     
@@ -284,23 +279,23 @@ class BackgroundPlayerService : Service() {
             println("📻 开始更新媒体元数据: title=$title, artist=$artist, duration=$duration")
             
             mediaSession?.let { session ->
-                val metadata = MediaMetadata.Builder()
-                    .putString(MediaMetadata.METADATA_KEY_TITLE, title)
-                    .putString(MediaMetadata.METADATA_KEY_ARTIST, artist ?: "Unknown Artist")
-                    .putString(MediaMetadata.METADATA_KEY_ALBUM, album ?: "Unknown Album")
-                    .putLong(MediaMetadata.METADATA_KEY_DURATION, duration)
+                val metadata = MediaMetadataCompat.Builder()
+                    .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title)
+                    .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, artist ?: "Unknown Artist")
+                    .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, album ?: "Unknown Album")
+                    .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration)
                     .build()
                 
                 session.setMetadata(metadata)
-                println("✅ MediaSession 元数据已设置: $title")
+                println("✅ MediaSessionCompat 元数据已设置: $title")
                 
                 // ✅ 同时更新通知
                 println("🔔 准备更新通知...")
                 updateNotification(title, isCurrentlyPlaying)
                 
-                println("📻 MediaSession 元数据更新完成: $title")
+                println("📻 MediaSessionCompat 元数据更新完成: $title")
             } ?: run {
-                println("❌ MediaSession 未初始化，无法更新元数据")
+                println("❌ MediaSessionCompat 未初始化，无法更新元数据")
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -314,14 +309,14 @@ class BackgroundPlayerService : Service() {
     fun updatePlaybackState(state: Int, position: Long, speed: Float) {
         try {
             mediaSession?.let { session ->
-                val playbackState = PlaybackState.Builder()
+                val playbackState = PlaybackStateCompat.Builder()
                     .setState(state, position, speed)
                     .build()
                 
                 session.setPlaybackState(playbackState)
                 
                 // ✅ 更新内部播放状态标记
-                isCurrentlyPlaying = (state == PlaybackState.STATE_PLAYING)
+                isCurrentlyPlaying = (state == PlaybackStateCompat.STATE_PLAYING)
                 
                 // ✅ 更新通知以反映新的播放状态
                 updateNotification(currentTitle, isCurrentlyPlaying)
