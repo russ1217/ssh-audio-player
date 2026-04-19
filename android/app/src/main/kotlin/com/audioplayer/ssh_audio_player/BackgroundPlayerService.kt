@@ -73,12 +73,12 @@ class BackgroundPlayerService : Service() {
         val notification = buildMediaStyleNotification().build()
         startForeground(NOTIFICATION_ID, notification)
         
-        // ✅ 关键修复：给Wake Lock添加较短的超时时间(5秒)
-        // Dart层会定期调用renewWakeLock()来续租(每2秒)
-        // 如果应用被杀死,renewWakeLock()不再被调用,Wake Lock会在5秒后自动释放
+        // ✅ 关键修复：给Wake Lock添加极短的超时时间(2秒)
+        // Dart层会定期调用renewWakeLock()来续租(每1秒)
+        // 如果应用被杀死,renewWakeLock()不再被调用,Wake Lock会在2秒后自动释放
         if (!wakeLock.isHeld) {
-            wakeLock.acquire(5 * 1000L) // 5秒超时
-            Log.d(TAG, "🔒 Wake Lock 已获取，超时时间: 5秒")
+            wakeLock.acquire(2 * 1000L) // 2秒超时
+            Log.d(TAG, "🔒 Wake Lock 已获取，超时时间: 2秒")
         }
 
         return START_NOT_STICKY // ✅ 关键修复：改为 NOT_STICKY，避免系统自动重启服务
@@ -251,8 +251,8 @@ class BackgroundPlayerService : Service() {
      */
     fun renewWakeLock() {
         if (wakeLock.isHeld) {
-            wakeLock.acquire(5 * 1000L) // 重新获取5秒超时
-            Log.d(TAG, "🔄 Wake Lock 已续租，新超时: 5秒")
+            wakeLock.acquire(2 * 1000L) // 重新获取2秒超时
+            Log.d(TAG, "🔄 Wake Lock 已续租，新超时: 2秒")
         } else {
             Log.w(TAG, "⚠️ Wake Lock 未持有，无法续租")
         }
