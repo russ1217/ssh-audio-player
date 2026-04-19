@@ -17,12 +17,27 @@ class MainActivity : FlutterActivity() {
     private val BACKGROUND_SERVICE_CHANNEL = "com.example.player/background_service"
     // ✅ 新增：媒体会话通道，用于更新曲目信息
     private val MEDIA_SESSION_CHANNEL = "com.example.player/media_session"
+    // ✅ 新增：Android版本查询通道
+    private val ANDROID_VERSION_CHANNEL = "android_version"
     
     // ✅ 媒体控制广播接收器
     private var mediaControlReceiver: BroadcastReceiver? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        
+        // ✅ Android版本查询通道
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ANDROID_VERSION_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getAndroidVersion" -> {
+                    // 返回真实的Android API Level
+                    result.success(Build.VERSION.SDK_INT)
+                }
+                else -> {
+                    result.notImplemented()
+                }
+            }
+        }
         
         // 电池优化通道
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, BATTERY_CHANNEL).setMethodCallHandler { call, result ->

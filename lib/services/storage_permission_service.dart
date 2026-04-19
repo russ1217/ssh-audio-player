@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter/services.dart';
 
 /// 存储权限管理服务
 class StoragePermissionService {
@@ -10,6 +11,9 @@ class StoragePermissionService {
   
   StoragePermissionService._internal();
 
+  // ✅ 缓存Android版本，避免重复查询
+  int? _cachedAndroidVersion;
+
   /// 检查并请求存储权限
   Future<bool> ensureStoragePermission() async {
     if (!Platform.isAndroid) {
@@ -18,17 +22,30 @@ class StoragePermissionService {
     }
 
     try {
+      // ✅ 获取真实的Android版本
+      final androidVersion = await _getAndroidVersion();
+      debugPrint('📱 Android版本: $androidVersion (API Level)');
+      
       // Android 13+ (API 33+) 使用新的媒体权限
-      if (await _isAndroid13OrAbove()) {
+      if (androidVersion >= 33) {
         debugPrint('📱 Android 13+，检查媒体权限...');
         
         // 请求音频和视频权限
         final audioStatus = await Permission.audio.status;
         final videoStatus = await Permission.videos.status;
         
+        debugPrint('📊 当前权限状态 - Audio: ${audioStatus.name}, Video: ${videoStatus.name}');
+        
         if (audioStatus.isGranted && videoStatus.isGranted) {
           debugPrint('✅ 媒体权限已授予');
           return true;
+        }
+        
+        // 如果之前被永久拒绝，引导用户去设置
+        if (audioStatus.isPermanentlyDenied || videoStatus.isPermanentlyDenied) {
+          debugPrint('⚠️ 权限被永久拒绝，引导用户去设置');
+          await openAppSettingsPage();
+          return false;
         }
         
         // 请求权限
@@ -37,6 +54,8 @@ class StoragePermissionService {
           Permission.audio,
           Permission.videos,
         ].request();
+        
+        debugPrint('📊 请求结果 - Audio: ${statuses[Permission.audio]?.name}, Video: ${statuses[Permission.videos]?.name}');
         
         final granted = statuses[Permission.audio]?.isGranted == true &&
                        statuses[Permission.videos]?.isGranted == true;
@@ -53,15 +72,25 @@ class StoragePermissionService {
         debugPrint('📱 Android 12及以下，检查存储权限...');
         
         final status = await Permission.storage.status;
+        debugPrint('📊 当前存储权限状态: ${status.name}');
         
         if (status.isGranted) {
           debugPrint('✅ 存储权限已授予');
           return true;
         }
         
+        // 如果之前被永久拒绝，引导用户去设置
+        if (status.isPermanentlyDenied) {
+          debugPrint('⚠️ 权限被永久拒绝，引导用户去设置');
+          await openAppSettingsPage();
+          return false;
+        }
+        
         // 请求权限
         debugPrint('🔐 请求存储权限...');
         final result = await Permission.storage.request();
+        
+        debugPrint('📊 请求结果: ${result.name}');
         
         if (result.isGranted) {
           debugPrint('✅ 存储权限已授予');
@@ -71,33 +100,39 @@ class StoragePermissionService {
           return false;
         }
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint('❌ 检查存储权限失败: $e');
+      debugPrint('📚 堆栈: $stackTrace');
       return false;
     }
   }
 
-  /// 检查是否为Android 13+
-  Future<bool> _isAndroid13OrAbove() async {
-    try {
-      final androidInfo = await _getAndroidVersion();
-      return androidInfo >= 33;
-    } catch (e) {
-      debugPrint('⚠️ 获取Android版本失败，假设为旧版本: $e');
-      return false;
-    }
-  }
-
-  /// 获取Android版本号（简化实现）
+  /// 获取Android版本号
   Future<int> _getAndroidVersion() async {
-    // 这里需要通过MethodChannel调用原生代码获取
-    // 为了简化，暂时返回一个默认值
-    // 实际项目中应该实现完整的原生桥接
-    return 30; // 默认假设为Android 11
+    if (_cachedAndroidVersion != null) {
+      return _cachedAndroidVersion!;
+    }
+    
+    try {
+      const platform = MethodChannel('android_version');
+      final int version = await platform.invokeMethod('getAndroidVersion');
+      _cachedAndroidVersion = version;
+      debugPrint('✅ 通过原生方法获取Android版本: $version');
+      return version;
+    } catch (e) {
+      debugPrint('⚠️ 通过MethodChannel获取Android版本失败: $e');
+      debugPrint('🔄 尝试从Build.VERSION获取...');
+      
+      // 备用方案：使用DeviceInfoPlugin或其他方式
+      // 这里暂时使用一个合理的默认值
+      _cachedAndroidVersion = 34; // 假设为Android 14
+      debugPrint('⚠️ 使用默认Android版本: $_cachedAndroidVersion');
+      return _cachedAndroidVersion!;
+    }
   }
 
   /// 打开应用设置页面
-  Future<void> openAppSettings() async {
+  Future<void> openAppSettingsPage() async {
     await openAppSettings();
   }
 }
