@@ -211,8 +211,22 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        println("🗑️ MainActivity onDestroy 被调用")
+        
+        // ✅ 关键修复：Activity销毁时也要停止前台服务
+        // 这确保了即使服务还在启动过程中，也能被正确停止
+        try {
+            val serviceIntent = Intent(this, BackgroundPlayerService::class.java)
+            stopService(serviceIntent)
+            println("✅ MainActivity: 已请求停止后台服务")
+        } catch (e: Exception) {
+            println("⚠️ MainActivity: 停止服务失败: ${e.message}")
+        }
+        
         // ✅ 注销广播接收器
         unregisterMediaControlReceiver()
+        
+        println("✅ MainActivity 完全销毁")
     }
 
 }

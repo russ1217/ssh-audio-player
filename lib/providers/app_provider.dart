@@ -1915,7 +1915,12 @@ class AppProvider extends ChangeNotifier {
     try {
       debugPrint('🔧 检查前台服务状态...');
       await BackgroundService.start();
-      debugPrint('✅ 前台服务已启动，MediaSession已初始化');
+      
+      // ✅ 关键修复：等待服务完全启动并注册到系统
+      // 这样可以确保即使立即杀死应用，onTaskRemoved也会被调用
+      await Future.delayed(const Duration(milliseconds: 800));
+      
+      debugPrint('✅ 前台服务已完全启动，MediaSession已初始化');
     } catch (e) {
       debugPrint('⚠️ 启动前台服务失败（可忽略）: $e');
       // 即使启动失败也继续，可能是服务已经运行或其他原因
@@ -1995,6 +2000,8 @@ class AppProvider extends ChangeNotifier {
     }
   }
 }
+
+
 
 
 
