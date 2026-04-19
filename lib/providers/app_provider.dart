@@ -582,7 +582,9 @@ class AppProvider extends ChangeNotifier {
                 name: fileName,
                 isDirectory: isDir,
                 size: isDir ? null : stat.size,
+                sourceType: FileSourceType.local, // ✅ 明确标识为本地文件
               );
+
             } catch (e) {
               debugPrint('⚠️ 跳过无法访问的项目: ${entity.path}, 错误: $e');
               // 返回一个占位对象或跳过
@@ -611,7 +613,18 @@ class AppProvider extends ChangeNotifier {
         // ✅ 关键修复：将耗时的SSH操作放到后台执行，避免阻塞UI线程
         await Future.delayed(Duration.zero);
         
-        _currentFiles = await _sshService.listDirectory(_currentPath);
+        final sshFiles = await _sshService.listDirectory(_currentPath);
+        
+        // ✅ 关键修复：将SSH获取的文件标记为远程文件
+        _currentFiles = sshFiles.map((file) => MediaFile(
+          path: file.path,
+          name: file.name,
+          isDirectory: file.isDirectory,
+          size: file.size,
+          modified: file.modified,
+          duration: file.duration,
+          sourceType: FileSourceType.ssh, // ✅ 明确标识为SSH远程文件
+        )).toList();
       }
       
       // ✅ 排序操作也可能耗时，让出控制权
@@ -991,6 +1004,7 @@ class AppProvider extends ChangeNotifier {
               name: fileName,
               isDirectory: isDir,
               size: isDir ? null : stat.size,
+              sourceType: FileSourceType.local, // ✅ 明确标识为本地文件
             );
           } catch (e) {
             debugPrint('⚠️ 跳过无法访问的项目: ${entity.path}');
@@ -1004,6 +1018,17 @@ class AppProvider extends ChangeNotifier {
         debugPrint('🌐 SSH模式：扫描目录 $path');
         await Future.delayed(Duration.zero);
         files = await _sshService.listDirectory(path);
+        
+        // ✅ 关键修复：将SSH获取的文件标记为远程文件
+        files = files.map((file) => MediaFile(
+          path: file.path,
+          name: file.name,
+          isDirectory: file.isDirectory,
+          size: file.size,
+          modified: file.modified,
+          duration: file.duration,
+          sourceType: FileSourceType.ssh, // ✅ 明确标识为SSH远程文件
+        )).toList();
       }
       
       final mediaFiles = files.where((f) => f.isMedia).toList();
@@ -1942,6 +1967,12 @@ class AppProvider extends ChangeNotifier {
     }
   }
 }
+
+
+
+
+
+
 
 
 

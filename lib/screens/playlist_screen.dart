@@ -300,9 +300,66 @@ class _CurrentPlaylistTab extends StatelessWidget {
                         color: isPlaying ? Theme.of(context).colorScheme.primary : null,
                       ),
                     ),
-                    subtitle: Text(
-                      file.isDirectory ? '文件夹' : '音频文件',
-                      style: TextStyle(fontSize: 12),
+                    subtitle: Row(
+                      children: [
+                        // ✅ 新增：显示文件来源标识
+                        if (file.isSSHFile)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade50,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: Colors.blue.shade200, width: 1),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.cloud, size: 12, color: Colors.blue.shade700),
+                                const SizedBox(width: 3),
+                                Text(
+                                  'SSH',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.blue.shade700,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        if (file.isLocalFile)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade50,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: Colors.green.shade200, width: 1),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.phone_android, size: 12, color: Colors.green.shade700),
+                                const SizedBox(width: 3),
+                                Text(
+                                  '本地',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.green.shade700,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            file.isDirectory ? '文件夹' : '音频文件',
+                            style: const TextStyle(fontSize: 12),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
                     trailing: PopupMenuButton<String>(
                       onSelected: (value) {
