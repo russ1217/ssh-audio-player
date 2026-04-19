@@ -513,9 +513,17 @@ class AppProvider extends ChangeNotifier {
               final stat = entity.statSync();
               final isDir = stat.type == FileSystemEntityType.directory;
               
+              // ✅ 正确提取文件名：从完整路径中提取最后一部分
+              final fileName = entity.path.split('/').lastWhere(
+                (segment) => segment.isNotEmpty,
+                orElse: () => entity.path,
+              );
+              
+              debugPrint('📄 文件: path=${entity.path}, name=$fileName, isDir=$isDir');
+              
               return MediaFile(
                 path: entity.path,
-                name: entity.uri.pathSegments.last,
+                name: fileName,
                 isDirectory: isDir,
                 size: isDir ? null : stat.size,
               );
@@ -1731,6 +1739,8 @@ class AppProvider extends ChangeNotifier {
     }
   }
 }
+
+
 
 
 
