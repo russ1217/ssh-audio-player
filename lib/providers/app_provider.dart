@@ -14,6 +14,7 @@ import '../services/timer_service.dart';
 import '../services/streaming_audio_service.dart';
 import '../services/background_service.dart';
 import '../services/storage_permission_service.dart';
+import '../services/network_monitor_service.dart';
 
 class AppProvider extends ChangeNotifier {
   final SSHService _sshService = SSHService();
@@ -22,6 +23,7 @@ class AppProvider extends ChangeNotifier {
   final StreamingAudioService _streamingService = StreamingAudioService();
   final TimerService _timerService = TimerService();
   final StoragePermissionService _permissionService = StoragePermissionService();
+  final NetworkMonitorService _networkMonitor = NetworkMonitorService();
 
   // ✅ 新增：本地文件模式标志
   bool _isLocalMode = false; // true=本地文件, false=SSH远程文件
@@ -83,6 +85,7 @@ class AppProvider extends ChangeNotifier {
   AppProvider() {
     _init();
     _setupStreamingServiceListener();
+    _setupNetworkMonitor();
   }
 
   Future<void> _init() async {
@@ -92,6 +95,86 @@ class AppProvider extends ChangeNotifier {
     _setupTimerListeners();
     // ✅ 移除：不再在初始化时恢复播放位置，改为在打开播放列表时恢复
     // _restoreLastPlayedPosition();
+  }
+
+  /// 设置网络状态监控
+  void _setupNetworkMonitor() {
+    debugPrint('🌐 设置网络状态监控...');
+    
+    // 初始化网络监控服务
+    _networkMonitor.initialize();
+    
+    // 监听网络状态变化
+    _networkMonitor.onNetworkChanged = (isConnected) {
+      debugPrint('🔄 网络状态变化: ${isConnected ? "已连接" : "已断开"}');
+      
+      if (!isConnected) {
+        // 网络断开
+        _handleNetworkDisconnected();
+      } else {
+        // 网络恢复
+        _handleNetworkReconnected();
+      }
+    };
+    
+    debugPrint('✅ 网络状态监控已设置');
+  }
+
+  /// 处理网络断开
+  void _handleNetworkDisconnected() {
+    debugPrint('⚠️ 网络已断开，保存播放状态...');
+    
+    // 如果正在播放且是SSH模式，保存当前播放状态
+    if (_isPlaying && !_isLocalMode && _currentPlayingFile != null) {
+      debugPrint('💾 网络断开，保存播放进度以备恢复');
+      // SSH心跳检测会自动处理重连，这里只做标记
+      _shouldResumeAfterReconnect = true;
+    }
+  }
+
+  /// 处理网络恢复
+  Future<void> _handleNetworkReconnected() async {
+    debugPrint('✅ 网络已恢复，检查是否需要重连和恢复播放...');
+    
+    // 如果之前应该恢复播放，但现在SSH未连接，尝试重新连接
+    if (_shouldResumeAfterReconnect && !_sshService.isConnected && _activeSSHConfig != null) {
+      debugPrint('🔄 网络恢复，尝试重新连接SSH...');
+      
+      try {
+        final success = await _sshService.reconnect().timeout(
+          const Duration(seconds: 30),
+          onTimeout: () {
+            throw TimeoutException('SSH 重连超时');
+          },
+        );
+        
+        if (success) {
+          debugPrint('✅ SSH 重连成功，准备恢复播放');
+          _isSSHConnected = true;
+          notifyListeners();
+          
+          // 延迟一下确保连接稳定
+          await Future.delayed(const Duration(milliseconds: 500));
+          
+          // 恢复播放
+          await _resumePlaybackAfterReconnect();
+        } else {
+          debugPrint('❌ SSH 重连失败');
+          _isSSHConnected = false;
+          notifyListeners();
+        }
+      } catch (e) {
+        debugPrint('❌ SSH 重连异常: $e');
+        _isSSHConnected = false;
+        _shouldResumeAfterReconnect = false;
+        _isAutoResuming = false;
+        notifyListeners();
+      }
+    } else if (_sshService.isConnected) {
+      debugPrint('✅ SSH 连接正常，无需重连');
+      _isSSHConnected = true;
+      notifyListeners();
+    }
   }
 
   /// 设置流式服务 SSH 断开监听
@@ -1809,6 +1892,7 @@ class AppProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _networkMonitor.dispose();
     _sshService.dispose();
     _audioPlayerService.dispose();
     _timerService.dispose();
@@ -2000,5 +2084,7 @@ class AppProvider extends ChangeNotifier {
     }
   }
 }
+
+
 
 

@@ -39,6 +39,9 @@ dependencies:
   uuid: ^4.3.3
   flutter_local_notifications: ^17.2.4
   url_launcher: ^6.2.5
+  
+  # 网络连接检测
+  connectivity_plus: ^5.0.2
 
 dev_dependencies:
   flutter_test:
