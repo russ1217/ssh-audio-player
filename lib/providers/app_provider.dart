@@ -452,8 +452,26 @@ class AppProvider extends ChangeNotifier {
   Future<void> handleNetworkReconnected() async {
     debugPrint('🔄 手动触发网络恢复检查...');
     
-    // ✅ 关键改进：直接调用SSH服务的检查并重连方法
-    final success = await _sshService.checkAndReconnectIfNeeded();
+    // ✅ 关键改进：增加重试机制，应对VPN刚恢复时网络不稳定的情况
+    int retryCount = 0;
+    const maxRetries = 3;
+    bool success = false;
+    
+    while (retryCount < maxRetries && !success) {
+      if (retryCount > 0) {
+        final delaySeconds = 3 * retryCount; // 第1次等3秒，第2次等6秒
+        debugPrint('⏳ 等待${delaySeconds}秒后重试SSH重连（${retryCount + 1}/$maxRetries）...');
+        await Future.delayed(Duration(seconds: delaySeconds));
+      }
+      
+      debugPrint('🔄 SSH重连尝试 (${retryCount + 1}/$maxRetries)...');
+      success = await _sshService.checkAndReconnectIfNeeded();
+      
+      if (!success) {
+        retryCount++;
+        debugPrint('❌ SSH重连失败（尝试 ${retryCount}/$maxRetries）');
+      }
+    }
     
     if (success) {
       debugPrint('✅ SSH重连成功，准备恢复播放');
@@ -466,7 +484,7 @@ class AppProvider extends ChangeNotifier {
       // 恢复播放
       await _resumePlaybackAfterReconnect();
     } else {
-      debugPrint('❌ SSH重连失败或无需重连');
+      debugPrint('⚠️ SSH重连失败（已尝试 $maxRetries 次），将由SSH心跳检测继续重试');
       _isSSHConnected = false;
       notifyListeners();
     }
