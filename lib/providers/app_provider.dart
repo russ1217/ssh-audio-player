@@ -71,6 +71,7 @@ class AppProvider extends ChangeNotifier {
   List<SSHConfig> get sshConfigs => _sshConfigs;
   SSHConfig? get activeSSHConfig => _activeSSHConfig;
   bool get isSSHConnected => _isSSHConnected;
+  bool get shouldResumeAfterReconnect => _shouldResumeAfterReconnect; // ✅ 暴露恢复标志
   List<MediaFile> get currentFiles => _currentFiles;
   String get currentPath => _currentPath;
   bool get isLoading => _isLoading;
@@ -511,6 +512,12 @@ class AppProvider extends ChangeNotifier {
     }
     
     notifyListeners();
+  }
+
+  /// ✅ 公开方法：手动触发网络恢复检查（供main.dart调用）
+  Future<void> handleNetworkReconnected() async {
+    debugPrint('🔄 手动触发网络恢复检查...');
+    await _handleNetworkReconnected();
   }
 
   /// ✅ 切换到本地文件模式

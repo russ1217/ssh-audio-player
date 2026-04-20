@@ -195,6 +195,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       debugPrint('📱 应用回到前台');
       _notificationService.hideNotification();
       
+      // ✅ 关键修复：应用恢复到前台时，检查网络状态并尝试恢复SSH连接
+      _checkAndRecoverNetworkConnection();
+      
       // 可以选择停止前台服务以节省资源（可选）
       // BackgroundService.stop().then((_) {
       //   _isForegroundServiceRunning = false;
@@ -203,6 +206,36 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     } else if (state == AppLifecycleState.detached) {
       // ✅ 关键修复：应用被销毁时（用户杀死app），停止前台服务和播放器
       _stopForegroundServiceAndPlayer();
+    }
+  }
+
+  /// ✅ 检查并恢复网络连接
+  Future<void> _checkAndRecoverNetworkConnection() async {
+    debugPrint('🔍 应用恢复到前台，检查网络连接状态...');
+    
+    try {
+      // 获取AppProvider实例
+      final context = _navigatorKey.currentContext;
+      if (context == null) {
+        debugPrint('⚠️ 无法获取BuildContext，跳过网络检查');
+        return;
+      }
+      
+      final provider = context.read<AppProvider>();
+      
+      // 检查是否应该恢复播放但SSH未连接
+      if (provider.shouldResumeAfterReconnect && !provider.isSSHConnected) {
+        debugPrint('🔄 检测到需要恢复SSH连接，尝试重连...');
+        
+        // 触发网络恢复处理
+        await provider.handleNetworkReconnected();
+      } else {
+        debugPrint('✅ 无需恢复SSH连接');
+        debugPrint('   - shouldResumeAfterReconnect: ${provider.shouldResumeAfterReconnect}');
+        debugPrint('   - isSSHConnected: ${provider.isSSHConnected}');
+      }
+    } catch (e) {
+      debugPrint('❌ 检查网络连接失败: $e');
     }
   }
 
