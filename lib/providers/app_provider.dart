@@ -452,6 +452,13 @@ class AppProvider extends ChangeNotifier {
   Future<void> handleNetworkReconnected() async {
     debugPrint('🔄 手动触发网络恢复检查...');
     
+    // ✅ 关键修复：先检查SSH是否已经连接
+    final wasConnected = _sshService.isConnected;
+    if (wasConnected) {
+      debugPrint('ℹ️ SSH已连接，无需重连和恢复播放');
+      return;
+    }
+    
     // ✅ 关键改进：增加重试机制，应对VPN刚恢复时网络不稳定的情况
     int retryCount = 0;
     const maxRetries = 3;
