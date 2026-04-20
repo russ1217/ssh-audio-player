@@ -9,7 +9,7 @@ class NetworkMonitorService {
   NetworkMonitorService._internal();
 
   final Connectivity _connectivity = Connectivity();
-  StreamSubscription<List<ConnectivityResult>>? _subscription;
+  StreamSubscription<ConnectivityResult>? _subscription;
   
   // 网络状态控制器
   final _networkStatusController = StreamController<bool>.broadcast();
@@ -30,8 +30,8 @@ class NetworkMonitorService {
     _checkInitialConnectivity();
     
     // 监听网络状态变化
-    _subscription = _connectivity.onConnectivityChanged.listen((results) {
-      _handleConnectivityChange(results);
+    _subscription = _connectivity.onConnectivityChanged.listen((result) {
+      _handleConnectivityChange(result);
     });
     
     debugPrint('✅ 网络状态监控已启动');
@@ -40,8 +40,8 @@ class NetworkMonitorService {
   /// 检查初始网络连接状态
   Future<void> _checkInitialConnectivity() async {
     try {
-      final results = await _connectivity.checkConnectivity();
-      final hasConnection = _hasValidConnection(results);
+      final result = await _connectivity.checkConnectivity();
+      final hasConnection = _hasValidConnection(result);
       
       if (_isConnected != hasConnection) {
         _isConnected = hasConnection;
@@ -56,8 +56,8 @@ class NetworkMonitorService {
   }
 
   /// 处理网络状态变化
-  void _handleConnectivityChange(List<ConnectivityResult> results) {
-    final hasConnection = _hasValidConnection(results);
+  void _handleConnectivityChange(ConnectivityResult result) {
+    final hasConnection = _hasValidConnection(result);
     
     if (_isConnected != hasConnection) {
       _isConnected = hasConnection;
@@ -73,20 +73,18 @@ class NetworkMonitorService {
   }
 
   /// 判断是否有有效的网络连接
-  bool _hasValidConnection(List<ConnectivityResult> results) {
-    return results.any((result) => 
-      result == ConnectivityResult.mobile ||
-      result == ConnectivityResult.wifi ||
-      result == ConnectivityResult.ethernet ||
-      result == ConnectivityResult.vpn
-    );
+  bool _hasValidConnection(ConnectivityResult result) {
+    return result == ConnectivityResult.mobile ||
+           result == ConnectivityResult.wifi ||
+           result == ConnectivityResult.ethernet ||
+           result == ConnectivityResult.vpn;
   }
 
   /// 手动检查网络状态
   Future<bool> checkConnectivity() async {
     try {
-      final results = await _connectivity.checkConnectivity();
-      return _hasValidConnection(results);
+      final result = await _connectivity.checkConnectivity();
+      return _hasValidConnection(result);
     } catch (e) {
       debugPrint('⚠️ 检查网络连接失败: $e');
       return false;
