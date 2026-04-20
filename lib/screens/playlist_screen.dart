@@ -635,6 +635,8 @@ class _CurrentPlaylistTabState extends State<_CurrentPlaylistTab> {
                               provider.removeFromPlaylist(index);
                             } else if (value == 'play') {
                               provider.playFromPlaylist(index);
+                            } else if (value == 'view') {
+                              _viewFileDetails(context, file);
                             }
                           },
                           itemBuilder: (context) => [
@@ -645,6 +647,16 @@ class _CurrentPlaylistTabState extends State<_CurrentPlaylistTab> {
                                   Icon(Icons.play_arrow),
                                   SizedBox(width: 8),
                                   Text('播放'),
+                                ],
+                              ),
+                            ),
+                            const PopupMenuItem(
+                              value: 'view',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.visibility),
+                                  SizedBox(width: 8),
+                                  Text('查看内容'),
                                 ],
                               ),
                             ),
@@ -669,6 +681,85 @@ class _CurrentPlaylistTabState extends State<_CurrentPlaylistTab> {
           ],
         );
       },
+    );
+  }
+
+  /// 查看文件详细信息
+  void _viewFileDetails(BuildContext context, dynamic file) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(
+              file.isVideo ? Icons.movie : Icons.music_note,
+              color: Theme.of(ctx).colorScheme.primary,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                file.name,
+                style: const TextStyle(fontSize: 16),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 文件类型
+              Row(
+                children: [
+                  const Icon(Icons.info_outline, size: 16),
+                  const SizedBox(width: 8),
+                  Text('类型: ${file.isDirectory ? "文件夹" : (file.isVideo ? "视频文件" : "音频文件")}'),
+                ],
+              ),
+              const SizedBox(height: 8),
+              // 文件来源
+              Row(
+                children: [
+                  Icon(
+                    file.isSSHFile ? Icons.cloud : Icons.phone_android,
+                    size: 16,
+                    color: file.isSSHFile ? Colors.blue : Colors.green,
+                  ),
+                  const SizedBox(width: 8),
+                  Text('来源: ${file.isSSHFile ? "SSH 远程" : "本地存储"}'),
+                ],
+              ),
+              const SizedBox(height: 8),
+              // 文件路径
+              const Divider(),
+              const Text('完整路径:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              const SizedBox(height: 4),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  file.path ?? '未知路径',
+                  style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
     );
   }
 }
