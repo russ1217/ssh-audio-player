@@ -196,7 +196,6 @@ class SSHService {
     _sftp = null;
     _client?.close();
     _client = null;
-    _currentConfig = null;
   }
 
   Future<List<MediaFile>> listDirectory(String path) async {
