@@ -700,7 +700,9 @@ class _CurrentPlaylistTabState extends State<_CurrentPlaylistTab> {
               child: Text(
                 file.name,
                 style: const TextStyle(fontSize: 16),
-                overflow: TextOverflow.ellipsis,
+                // ✅ 允许文件名换行显示
+                softWrap: true,
+                maxLines: null,
               ),
             ),
           ],
@@ -740,13 +742,30 @@ class _CurrentPlaylistTabState extends State<_CurrentPlaylistTab> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
+                  // ✅ 使用深色背景提高对比度
+                  color: Theme.of(ctx).brightness == Brightness.dark 
+                      ? Colors.grey.shade800 
+                      : Colors.grey.shade200,
                   borderRadius: BorderRadius.circular(4),
+                  border: Border.all(
+                    color: Theme.of(ctx).brightness == Brightness.dark 
+                        ? Colors.grey.shade600 
+                        : Colors.grey.shade400,
+                    width: 1,
+                  ),
                 ),
                 child: Text(
                   file.path ?? '未知路径',
-                  style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
-                  maxLines: 3,
+                  // ✅ 使用高对比度的文字颜色
+                  style: TextStyle(
+                    fontSize: 12, 
+                    fontFamily: 'monospace',
+                    color: Theme.of(ctx).brightness == Brightness.dark 
+                        ? Colors.white 
+                        : Colors.black87,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 5,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
