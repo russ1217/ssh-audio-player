@@ -211,31 +211,43 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   /// ✅ 检查并恢复网络连接
   Future<void> _checkAndRecoverNetworkConnection() async {
-    debugPrint('🔍 应用恢复到前台，检查网络连接状态...');
+    debugPrint('🔍 应用恢复到前台，检查SSH连接状态...');
     
     try {
       // 获取AppProvider实例
       final context = _navigatorKey.currentContext;
       if (context == null) {
-        debugPrint('⚠️ 无法获取BuildContext，跳过网络检查');
+        debugPrint('⚠️ 无法获取BuildContext，跳过SSH检查');
         return;
       }
       
       final provider = context.read<AppProvider>();
       
-      // 检查是否应该恢复播放但SSH未连接
-      if (provider.shouldResumeAfterReconnect && !provider.isSSHConnected) {
-        debugPrint('🔄 检测到需要恢复SSH连接，尝试重连...');
+      // ✅ 关键修复：不依赖网络层检测，直接检查SSH连接有效性
+      if (!provider.isLocalMode && provider.activeSSHConfig != null) {
+        debugPrint('📡 检测到SSH模式，检查连接有效性...');
         
-        // 触发网络恢复处理
-        await provider.handleNetworkReconnected();
+        // 检查SSH是否已连接
+        if (!provider.isSSHConnected) {
+          debugPrint('⚠️ SSH未连接，尝试重连...');
+          await provider.handleNetworkReconnected();
+        } else {
+          // SSH已连接，但需要验证连接是否真正有效
+          debugPrint('✅ SSH已连接，验证连接有效性...');
+          final isValid = await provider.sshService.checkConnection();
+          
+          if (!isValid) {
+            debugPrint('❌ SSH连接已失效，触发重连...');
+            await provider.handleNetworkReconnected();
+          } else {
+            debugPrint('✅ SSH连接有效，无需重连');
+          }
+        }
       } else {
-        debugPrint('✅ 无需恢复SSH连接');
-        debugPrint('   - shouldResumeAfterReconnect: ${provider.shouldResumeAfterReconnect}');
-        debugPrint('   - isSSHConnected: ${provider.isSSHConnected}');
+        debugPrint('ℹ️ 本地模式或无SSH配置，跳过SSH检查');
       }
     } catch (e) {
-      debugPrint('❌ 检查网络连接失败: $e');
+      debugPrint('❌ 检查SSH连接失败: $e');
     }
   }
 

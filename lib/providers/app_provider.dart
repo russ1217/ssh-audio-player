@@ -123,75 +123,26 @@ class AppProvider extends ChangeNotifier {
 
   /// 处理网络断开
   void _handleNetworkDisconnected() {
-    debugPrint('⚠️ 网络已断开，保存播放状态...');
+    debugPrint('⚠️ 网络已断开（仅供参考，不触发重连）');
     
-    // 如果正在播放且是SSH模式，保存当前播放状态
+    // ✅ 关键修改：网络断开时只记录日志，不触发任何操作
+    // SSH重连由SSH心跳检测和应用恢复到前台时的主动检查负责
     if (_isPlaying && !_isLocalMode && _currentPlayingFile != null) {
-      debugPrint('💾 网络断开，保存播放进度以备恢复');
-      // SSH心跳检测会自动处理重连，这里只做标记
-      _shouldResumeAfterReconnect = true;
+      debugPrint('ℹ️ 如果SSH因此断开，将由SSH心跳检测或应用恢复时处理');
     }
   }
 
   /// 处理网络恢复
   Future<void> _handleNetworkReconnected() async {
-    debugPrint('✅ 网络已恢复，检查是否需要重连和恢复播放...');
-    debugPrint('   - _shouldResumeAfterReconnect: $_shouldResumeAfterReconnect');
-    debugPrint('   - _sshService.isConnected: ${_sshService.isConnected}');
-    debugPrint('   - _activeSSHConfig: ${_activeSSHConfig != null ? "存在" : "null"}');
-    debugPrint('   - _isPlaying: $_isPlaying');
-    debugPrint('   - _currentPlayingFile: ${_currentPlayingFile?.name ?? "null"}');
+    debugPrint('✅ 网络已恢复（仅供参考）');
     
-    // 如果之前应该恢复播放，但现在SSH未连接，尝试重新连接
-    if (_shouldResumeAfterReconnect && !_sshService.isConnected && _activeSSHConfig != null) {
-      debugPrint('🔄 网络恢复，尝试重新连接SSH...');
-      
-      try {
-        final success = await _sshService.reconnect().timeout(
-          const Duration(seconds: 30),
-          onTimeout: () {
-            throw TimeoutException('SSH 重连超时');
-          },
-        );
-        
-        if (success) {
-          debugPrint('✅ SSH 重连成功，准备恢复播放');
-          _isSSHConnected = true;
-          notifyListeners();
-          
-          // 延迟一下确保连接稳定
-          await Future.delayed(const Duration(milliseconds: 500));
-          
-          // 恢复播放
-          await _resumePlaybackAfterReconnect();
-        } else {
-          debugPrint('❌ SSH 重连失败');
-          _isSSHConnected = false;
-          notifyListeners();
-        }
-      } catch (e) {
-        debugPrint('❌ SSH 重连异常: $e');
-        _isSSHConnected = false;
-        _shouldResumeAfterReconnect = false;
-        _isAutoResuming = false;
-        notifyListeners();
-      }
-    } else if (_sshService.isConnected) {
-      debugPrint('✅ SSH 连接正常，无需重连');
-      _isSSHConnected = true;
-      notifyListeners();
-    } else {
-      debugPrint('⚠️ 网络已恢复，但不满足重连条件');
-      if (!_shouldResumeAfterReconnect) {
-        debugPrint('   - 原因：_shouldResumeAfterReconnect 为 false');
-      }
-      if (_sshService.isConnected) {
-        debugPrint('   - 原因：SSH 已连接');
-      }
-      if (_activeSSHConfig == null) {
-        debugPrint('   - 原因：没有活动的 SSH 配置');
-      }
-    }
+    // ✅ 关键修改：网络恢复时不自动重连SSH
+    // SSH重连由以下两个机制负责：
+    // 1. SSH心跳检测（后台持续监控）
+    // 2. 应用恢复到前台时的主动检查（main.dart中的_checkAndRecoverNetworkConnection）
+    debugPrint('ℹ️ SSH重连将由以下机制处理：');
+    debugPrint('   - SSH心跳检测（如果已启动）');
+    debugPrint('   - 应用恢复到前台时的主动检查');
   }
 
   /// 设置流式服务 SSH 断开监听
