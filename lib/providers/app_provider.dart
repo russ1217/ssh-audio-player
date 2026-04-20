@@ -135,6 +135,11 @@ class AppProvider extends ChangeNotifier {
   /// 处理网络恢复
   Future<void> _handleNetworkReconnected() async {
     debugPrint('✅ 网络已恢复，检查是否需要重连和恢复播放...');
+    debugPrint('   - _shouldResumeAfterReconnect: $_shouldResumeAfterReconnect');
+    debugPrint('   - _sshService.isConnected: ${_sshService.isConnected}');
+    debugPrint('   - _activeSSHConfig: ${_activeSSHConfig != null ? "存在" : "null"}');
+    debugPrint('   - _isPlaying: $_isPlaying');
+    debugPrint('   - _currentPlayingFile: ${_currentPlayingFile?.name ?? "null"}');
     
     // 如果之前应该恢复播放，但现在SSH未连接，尝试重新连接
     if (_shouldResumeAfterReconnect && !_sshService.isConnected && _activeSSHConfig != null) {
@@ -174,6 +179,17 @@ class AppProvider extends ChangeNotifier {
       debugPrint('✅ SSH 连接正常，无需重连');
       _isSSHConnected = true;
       notifyListeners();
+    } else {
+      debugPrint('⚠️ 网络已恢复，但不满足重连条件');
+      if (!_shouldResumeAfterReconnect) {
+        debugPrint('   - 原因：_shouldResumeAfterReconnect 为 false');
+      }
+      if (_sshService.isConnected) {
+        debugPrint('   - 原因：SSH 已连接');
+      }
+      if (_activeSSHConfig == null) {
+        debugPrint('   - 原因：没有活动的 SSH 配置');
+      }
     }
   }
 

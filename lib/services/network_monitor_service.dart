@@ -57,7 +57,12 @@ class NetworkMonitorService {
 
   /// 处理网络状态变化
   void _handleConnectivityChange(ConnectivityResult result) {
+    debugPrint('📡 网络状态变化事件: $result');
     final hasConnection = _hasValidConnection(result);
+    
+    debugPrint('   - 当前状态: ${_isConnected ? "已连接" : "未连接"}');
+    debugPrint('   - 检测结果: ${hasConnection ? "有连接" : "无连接"}');
+    debugPrint('   - ConnectivityResult: $result');
     
     if (_isConnected != hasConnection) {
       _isConnected = hasConnection;
@@ -69,6 +74,8 @@ class NetworkMonitorService {
       } else {
         debugPrint('❌ 网络已断开');
       }
+    } else {
+      debugPrint('ℹ️ 网络状态未变化，忽略');
     }
   }
 
