@@ -20,7 +20,7 @@ class SSHService {
   bool get isConnected => _client != null;
 
   int _reconnectAttempts = 0;
-  static const maxReconnectAttempts = 5;
+  // ✅ 移除最大重试次数限制，改为持续周期性检测
 
   /// 启动心跳检测
   void startHeartbeat() {
@@ -37,10 +37,10 @@ class SSHService {
           debugPrint('⚠️ 心跳检测：SSH 连接已断开');
           _connectionStatusController.add(false);
 
-          // 尝试自动重连（限制重试次数）
-          if (_currentConfig != null && _reconnectAttempts < maxReconnectAttempts) {
+          // ✅ 关键修改：持续尝试重连，不限制次数
+          if (_currentConfig != null) {
             _reconnectAttempts++;
-            debugPrint('🔄 心跳检测：尝试自动重连 ($_reconnectAttempts/$maxReconnectAttempts)...');
+            debugPrint('🔄 心跳检测：尝试自动重连 (第 $_reconnectAttempts 次)...');
             try {
               final reconnectSuccess = await reconnect().timeout(
                 const Duration(seconds: 20),
@@ -50,29 +50,24 @@ class SSHService {
               );
               _connectionStatusController.add(reconnectSuccess);
               if (reconnectSuccess) {
-                debugPrint('✅ 心跳检测：自动重连成功');
+                debugPrint('✅ 心跳检测：自动重连成功（共尝试 $_reconnectAttempts 次）');
                 _reconnectAttempts = 0; // 重置重试计数
                 // 重连成功后，恢复正常心跳间隔
                 _startHeartbeatTimer(heartbeatIntervalNormal);
               } else {
-                debugPrint('❌ 心跳检测：自动重连失败');
-                // 重连失败，使用快速心跳间隔
-                if (_reconnectAttempts < maxReconnectAttempts) {
-                  _startHeartbeatTimer(heartbeatIntervalDisconnected);
-                }
-              }
-            } catch (e) {
-              debugPrint('❌ 心跳检测：重连异常 - $e');
-              _connectionStatusController.add(false);
-              // 重连异常，使用快速心跳间隔
-              if (_reconnectAttempts < maxReconnectAttempts) {
+                debugPrint('❌ 心跳检测：自动重连失败，将在 ${heartbeatIntervalDisconnected.inSeconds} 秒后重试...');
+                // 重连失败，使用快速心跳间隔继续重试
                 _startHeartbeatTimer(heartbeatIntervalDisconnected);
               }
+            } catch (e) {
+              debugPrint('❌ 心跳检测：重连异常 - $e，将在 ${heartbeatIntervalDisconnected.inSeconds} 秒后重试...');
+              _connectionStatusController.add(false);
+              // 重连异常，使用快速心跳间隔继续重试
+              _startHeartbeatTimer(heartbeatIntervalDisconnected);
             }
-          } else if (_reconnectAttempts >= maxReconnectAttempts) {
-            debugPrint('⛔ 心跳检测：已达最大重连次数，停止重试');
+          } else {
+            debugPrint('⚠️ 心跳检测：无 SSH 配置，无法重连');
             _connectionStatusController.add(false);
-            stopHeartbeat();
           }
         } else {
           _reconnectAttempts = 0; // 重置重试计数
@@ -82,7 +77,7 @@ class SSHService {
     });
     
     final intervalType = interval == heartbeatIntervalNormal ? '正常' : '快速';
-    debugPrint('💓 SSH 心跳检测已启动（${intervalType}模式：${interval.inSeconds}秒，最多重试 $maxReconnectAttempts 次）');
+    debugPrint('💓 SSH 心跳检测已启动（${intervalType}模式：${interval.inSeconds}秒，将持续重试直到成功）');
   }
 
   /// 停止心跳检测

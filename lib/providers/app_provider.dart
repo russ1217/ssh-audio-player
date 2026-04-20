@@ -224,54 +224,16 @@ class AppProvider extends ChangeNotifier {
     }
     _isPlaying = false;
     
-    // 主动触发 SSH 重连（不等心跳检测）
+    // ✅ 关键修改：不再主动触发有限次数的重试，依赖SSH心跳检测的持续重试机制
     if (_activeSSHConfig != null) {
-      debugPrint('🔄 主动触发 SSH 重连...');
-      // 后台重试，不阻塞当前流程
-      _retrySshReconnect();
+      debugPrint('ℹ️ SSH心跳检测将持续尝试重连（每10秒一次），重连成功后会自动恢复播放');
+      debugPrint('ℹ️ 如果长时间未恢复，请检查网络连接或手动重连');
     } else {
       debugPrint('❌ 没有活动的 SSH 配置，无法重连');
       _isAutoResuming = false;
     }
-  }
-
-  /// 后台重试 SSH 重连（最多5次，间隔10秒）
-  Future<void> _retrySshReconnect() async {
-    const maxAttempts = 5;
-    const retryInterval = Duration(seconds: 10);
     
-    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        debugPrint('🔄 SSH 重连尝试 ($attempt/$maxAttempts)...');
-        final success = await _sshService.reconnect().timeout(
-          const Duration(seconds: 20),
-          onTimeout: () {
-            throw TimeoutException('SSH 连接超时');
-          },
-        );
-        
-        if (success) {
-          debugPrint('✅ SSH 重连成功（尝试 $attempt 次）');
-          // 重连成功，立即恢复播放
-          await _resumePlaybackAfterReconnect();
-          return;
-        } else {
-          debugPrint('❌ SSH 重连失败（尝试 $attempt/$maxAttempts）');
-        }
-      } catch (e) {
-        debugPrint('❌ SSH 重连异常（尝试 $attempt/$maxAttempts）: $e');
-      }
-      
-      // 如果不是最后一次尝试，等待后重试
-      if (attempt < maxAttempts) {
-        debugPrint('⏳ ${retryInterval.inSeconds}秒后重试...');
-        await Future.delayed(retryInterval);
-      }
-    }
-    
-    debugPrint('⛔ SSH 重连失败（已尝试 $maxAttempts 次），请手动重连');
-    _isAutoResuming = false;
-    _shouldResumeAfterReconnect = false;
+    notifyListeners();
   }
 
   /// SSH 重连成功后恢复播放
