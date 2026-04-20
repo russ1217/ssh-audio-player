@@ -563,7 +563,8 @@ class _CurrentPlaylistTabState extends State<_CurrentPlaylistTab> {
                           maxLines: 1, // 限制为一行
                           overflow: TextOverflow.ellipsis, // 超出部分显示省略号
                           style: TextStyle(
-                            fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
                             color: isPlaying ? Theme.of(context).colorScheme.primary : null,
                           ),
                         ),
