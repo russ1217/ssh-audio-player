@@ -116,13 +116,14 @@ class BottomPlayerBar extends StatelessWidget {
                   ),
                 ],
               ),
-              // 定时器指示器 (居右对齐)
+              // 定时器指示器和退出按钮 (居右对齐)
               if (provider.currentPlayingFile != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
                   child: Row(
                     children: [
                       const Spacer(),
+                      // 定时器指示器
                       StreamBuilder<TimerInfo?>(
                         stream: provider.countdownUpdateStream,
                         initialData: provider.sleepTimerRemaining != null 

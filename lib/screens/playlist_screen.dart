@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'dart:io';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
 import '../widgets/bottom_player_bar.dart';
@@ -20,6 +22,117 @@ class _PlaylistScreenState extends State<PlaylistScreen> with SingleTickerProvid
     _tabController = TabController(length: 2, vsync: this);
   }
 
+  /// ✅ 显示退出确认对话框
+  void _showExitDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.exit_to_app, color: Colors.red),
+              SizedBox(width: 8),
+              Text('退出应用'),
+            ],
+          ),
+          content: const Text(
+            '确定要退出应用吗？\n\n将会停止当前播放并断开SSH连接。',
+            style: TextStyle(fontSize: 16),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('取消'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.of(dialogContext).pop();
+                await _exitApp(context);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('退出'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// ✅ 退出应用：先停止播放，再断开连接，最后退出
+  Future<void> _exitApp(BuildContext context) async {
+    final provider = context.read<AppProvider>();
+    
+    try {
+      // 显示加载提示
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+              SizedBox(width: 16),
+              Text('正在停止播放并退出...'),
+            ],
+          ),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      
+      debugPrint('🛑 用户主动退出应用');
+      
+      // 第1步：停止播放
+      debugPrint('⏹️ 第1步：停止音频播放');
+      await provider.stopPlayback();
+      await Future.delayed(const Duration(milliseconds: 300));
+      
+      // 第2步：断开SSH连接（如果已连接）
+      if (provider.isSSHConnected) {
+        debugPrint('🔌 第2步：断开SSH连接');
+        await provider.disconnectSSH();
+        await Future.delayed(const Duration(milliseconds: 200));
+      }
+      
+      // 第3步：停止后台服务
+      debugPrint('🛑 第3步：停止后台服务');
+      try {
+        const MethodChannel('com.example.player/background_service')
+            .invokeMethod('stopService');
+        await Future.delayed(const Duration(milliseconds: 200));
+      } catch (e) {
+        debugPrint('⚠️ 停止后台服务失败: $e');
+      }
+      
+      // 第4步：退出应用
+      debugPrint('💀 第4步：退出应用');
+      
+      // 使用 SystemNavigator.pop() 退出应用
+      await SystemNavigator.pop(animated: true);
+      
+      // 如果上面的方法不起作用，强制退出
+      await Future.delayed(const Duration(milliseconds: 500));
+      exit(0);
+      
+    } catch (e, stackTrace) {
+      debugPrint('❌ 退出应用时出错: $e');
+      debugPrint('堆栈: $stackTrace');
+      
+      // 即使出错也尝试退出
+      try {
+        await SystemNavigator.pop(animated: true);
+      } catch (_) {
+        exit(1);
+      }
+    }
+  }
 
 
   @override
@@ -78,6 +191,15 @@ class _PlaylistScreenState extends State<PlaylistScreen> with SingleTickerProvid
             onPressed: () {
               context.read<AppProvider>().clearPlaylist();
             },
+          ),
+          // ✅ 新增：退出应用按钮（在最右侧）
+          IconButton(
+            icon: const Icon(
+              Icons.exit_to_app,
+              color: Colors.red,
+            ),
+            tooltip: '退出应用',
+            onPressed: () => _showExitDialog(context),
           ),
         ],
       ),
