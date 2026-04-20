@@ -152,8 +152,16 @@ class BackgroundPlayerService : Service() {
                 setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or 
                         MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS)
                 
-                // 设置初始播放状态（暂停）
+                // ✅ 关键修复：设置初始播放状态，并明确声明支持的操作（actions）
                 val initialState = PlaybackStateCompat.Builder()
+                    .setActions(
+                        PlaybackStateCompat.ACTION_PLAY or
+                        PlaybackStateCompat.ACTION_PAUSE or
+                        PlaybackStateCompat.ACTION_STOP or
+                        PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
+                        PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
+                        PlaybackStateCompat.ACTION_SEEK_TO
+                    )
                     .setState(PlaybackStateCompat.STATE_PAUSED, 0, 1.0f)
                     .build()
                 setPlaybackState(initialState)
@@ -194,7 +202,7 @@ class BackgroundPlayerService : Service() {
                 // 激活会话
                 isActive = true
                 
-                println("✅ MediaSessionCompat 已初始化")
+                println("✅ MediaSessionCompat 已初始化，支持播放/暂停/停止/上一曲/下一曲")
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -354,7 +362,16 @@ class BackgroundPlayerService : Service() {
     fun updatePlaybackState(state: Int, position: Long, speed: Float) {
         try {
             mediaSession?.let { session ->
+                // ✅ 关键修复：构建播放状态时必须包含 actions，否则蓝牙设备无法识别可用操作
                 val playbackState = PlaybackStateCompat.Builder()
+                    .setActions(
+                        PlaybackStateCompat.ACTION_PLAY or
+                        PlaybackStateCompat.ACTION_PAUSE or
+                        PlaybackStateCompat.ACTION_STOP or
+                        PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
+                        PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
+                        PlaybackStateCompat.ACTION_SEEK_TO
+                    )
                     .setState(state, position, speed)
                     .build()
                 
@@ -365,6 +382,8 @@ class BackgroundPlayerService : Service() {
                 
                 // ✅ 更新通知以反映新的播放状态
                 updateNotification(currentTitle, isCurrentlyPlaying)
+                
+                println("📻 MediaSessionCompat 播放状态已更新: state=$state, position=$position")
             }
         } catch (e: Exception) {
             e.printStackTrace()
