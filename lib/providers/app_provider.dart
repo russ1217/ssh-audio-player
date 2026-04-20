@@ -134,15 +134,36 @@ class AppProvider extends ChangeNotifier {
 
   /// 处理网络恢复
   Future<void> _handleNetworkReconnected() async {
-    debugPrint('✅ 网络已恢复（仅供参考）');
+    debugPrint('✅ 网络已恢复，立即检查SSH连接状态...');
     
-    // ✅ 关键修改：网络恢复时不自动重连SSH
-    // SSH重连由以下两个机制负责：
-    // 1. SSH心跳检测（后台持续监控）
-    // 2. 应用恢复到前台时的主动检查（main.dart中的_checkAndRecoverNetworkConnection）
-    debugPrint('ℹ️ SSH重连将由以下机制处理：');
-    debugPrint('   - SSH心跳检测（如果已启动）');
-    debugPrint('   - 应用恢复到前台时的主动检查');
+    // ✅ 关键改进：网络恢复时立即检查SSH连接并尝试重连
+    // 虽然connectivity_plus可能检测不到VPN，但能检测到基础网络变化
+    // 这通常意味着VPN也在重连，所以应该立即检查SSH状态
+    if (!_isLocalMode && _activeSSHConfig != null) {
+      debugPrint('🔍 SSH模式下，验证SSH连接有效性...');
+      
+      // 调用SSH服务的主动检查方法
+      final success = await _sshService.checkAndReconnectIfNeeded();
+      
+      if (success) {
+        debugPrint('✅ SSH连接正常或重连成功');
+        _isSSHConnected = true;
+        notifyListeners();
+        
+        // 如果需要恢复播放
+        if (_shouldResumeAfterReconnect && _currentPlayingFile != null) {
+          debugPrint('🔄 网络恢复，准备恢复播放...');
+          await Future.delayed(const Duration(milliseconds: 500));
+          await _resumePlaybackAfterReconnect();
+        }
+      } else {
+        debugPrint('⚠️ SSH重连失败或无配置，将由心跳检测继续重试');
+        _isSSHConnected = false;
+        notifyListeners();
+      }
+    } else {
+      debugPrint('ℹ️ 本地模式或无SSH配置，跳过SSH检查');
+    }
   }
 
   /// 设置流式服务 SSH 断开监听
