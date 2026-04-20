@@ -1,8 +1,8 @@
-qpackage com.audioplayer.ssh_audio_player
+package com.audioplayer.ssh_audio_player
 
 import android.content.BroadcastReceiver
 import android.content.Context
-qimport android.conqqtent.Intent
+import android.content.Intent
 import android.content.IntentFilter
 import android.net.Uri
 import android.os.Build
@@ -182,6 +182,62 @@ class MainActivity : FlutterActivity() {
     }
     
     /**
+     * ✅ 注册SSH检查广播接收器
+     * 当Native Service触发SSH检查时，通过此接收器通知Flutter层
+     */
+    private fun registerSshCheckReceiver() {
+        sshCheckReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                println("📡 MainActivity 收到SSH检查请求")
+                
+                // 通过 MethodChannel 调用 Flutter 层的 SSH 检查方法
+                flutterEngine?.dartExecutor?.binaryMessenger?.let { messenger ->
+                    val channel = MethodChannel(messenger, "com.audioplayer.ssh_audio_player/ssh_check")
+                    channel.invokeMethod("checkAndReconnect", null, object : io.flutter.plugin.common.MethodChannel.Result {
+                        override fun success(result: Any?) {
+                            println("✅ [Native] SSH检查结果: $result")
+                        }
+                        
+                        override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {
+                            println("❌ [Native] SSH检查失败: $errorCode - $errorMessage")
+                        }
+                        
+                        override fun notImplemented() {
+                            println("⚠️ [Native] SSH检查方法未实现")
+                        }
+                    })
+                }
+            }
+        }
+        
+        val filter = IntentFilter("com.audioplayer.ssh_audio_player.SSH_CHECK")
+        
+        // ✅ Android 14+ (API 34+) 要求指定 RECEIVER_EXPORTED 或 RECEIVER_NOT_EXPORTED
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(sshCheckReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(sshCheckReceiver, filter)
+        }
+        
+        println("✅ SSH检查广播接收器已注册")
+    }
+    
+    /**
+     * ✅ 注销SSH检查广播接收器
+     */
+    private fun unregisterSshCheckReceiver() {
+        sshCheckReceiver?.let {
+            try {
+                unregisterReceiver(it)
+                println("🗑️ SSH检查广播接收器已注销")
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        sshCheckReceiver = null
+    }
+    
+    /**
      * ✅ 更新 MediaSession 元数据（曲目标题等）
      */
     private fun updateMediaSessionMetadata(title: String, artist: String?, album: String?, duration: Long) {
@@ -233,6 +289,7 @@ class MainActivity : FlutterActivity() {
         try {
             // ✅ 注销广播接收器
             unregisterMediaControlReceiver()
+            unregisterSshCheckReceiver()
         } catch (e: Exception) {
             Log.e("MainActivity", "⚠️ MainActivity: 注销广播接收器失败: ${e.message}")
         }

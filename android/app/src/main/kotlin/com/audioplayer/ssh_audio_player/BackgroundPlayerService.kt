@@ -1,4 +1,4 @@
-qpackage com.audioplayer.ssh_audio_player
+package com.audioplayer.ssh_audio_player
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
