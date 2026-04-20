@@ -430,7 +430,25 @@ class AppProvider extends ChangeNotifier {
   /// ✅ 公开方法：手动触发网络恢复检查（供main.dart调用）
   Future<void> handleNetworkReconnected() async {
     debugPrint('🔄 手动触发网络恢复检查...');
-    await _handleNetworkReconnected();
+    
+    // ✅ 关键改进：直接调用SSH服务的检查并重连方法
+    final success = await _sshService.checkAndReconnectIfNeeded();
+    
+    if (success) {
+      debugPrint('✅ SSH重连成功，准备恢复播放');
+      _isSSHConnected = true;
+      notifyListeners();
+      
+      // 延迟一下确保连接稳定
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      // 恢复播放
+      await _resumePlaybackAfterReconnect();
+    } else {
+      debugPrint('❌ SSH重连失败或无需重连');
+      _isSSHConnected = false;
+      notifyListeners();
+    }
   }
 
   /// ✅ 切换到本地文件模式
@@ -1495,7 +1513,7 @@ class AppProvider extends ChangeNotifier {
                 final fileName = subEntity.uri.pathSegments.last;
                 if (fileName.startsWith('temp_') || 
                     fileName.endsWith('.mp3') || 
-                    fileName.endsWith('.mp4') || 
+                    fileName.endsWith('.mp4') ||
                     fileName.endsWith('.wav') ||
                     fileName.endsWith('.flac') ||
                     fileName.endsWith('.aac') ||
@@ -2020,6 +2038,8 @@ class AppProvider extends ChangeNotifier {
     }
   }
 }
+
+
 
 
 

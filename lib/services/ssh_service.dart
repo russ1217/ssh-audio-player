@@ -12,8 +12,8 @@ class SSHService {
   Timer? _heartbeatTimer;
   
   // 心跳检测相关
-  static const heartbeatIntervalNormal = Duration(seconds: 60);
-  static const heartbeatIntervalDisconnected = Duration(seconds: 10);
+  static const heartbeatIntervalNormal = Duration(seconds: 15); // ✅ 缩短间隔以快速检测VPN断开
+  static const heartbeatIntervalDisconnected = Duration(seconds: 5); // ✅ 断开后更快重试
   final _connectionStatusController = StreamController<bool>.broadcast();
   Stream<bool> get connectionStatusStream => _connectionStatusController.stream;
 
@@ -104,9 +104,29 @@ class SSHService {
   Future<bool> reconnect() async {
     if (_currentConfig == null) return false;
     debugPrint('🔄 正在重新连接 SSH...');
+    await disconnect();
     return connect(_currentConfig!);
   }
 
+  /// ✅ 主动检查SSH连接并立即重连（供外部调用）
+  Future<bool> checkAndReconnectIfNeeded() async {
+    debugPrint('🔍 主动检查SSH连接状态...');
+    
+    final isConnected = await checkConnection();
+    
+    if (!isConnected && _currentConfig != null) {
+      debugPrint('⚠️ SSH连接已断开，立即尝试重连...');
+      return await reconnect();
+    } else if (isConnected) {
+      debugPrint('✅ SSH连接正常');
+      return true;
+    } else {
+      debugPrint('⚠️ 无SSH配置，无法重连');
+      return false;
+    }
+  }
+
+  /// 连接到 SSH 服务器
   Future<bool> connect(SSHConfig config) async {
     try {
       await disconnect();
