@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'providers/app_provider.dart';
@@ -15,7 +16,41 @@ void main() {
   // ✅ 初始化媒体控制监听器（处理通知栏和蓝牙设备的控制命令）
   _initializeMediaControlListener();
   
+  // ✅ 初始化SSH检查MethodChannel（处理Native Service的定时检查请求）
+  _initializeSshCheckChannel();
+  
   runApp(const MyApp());
+}
+
+/// ✅ 初始化SSH检查MethodChannel
+void _initializeSshCheckChannel() {
+  const channel = MethodChannel('com.audioplayer.ssh_audio_player/ssh_check');
+  
+  channel.setMethodCallHandler((call) async {
+    debugPrint('📡 [Flutter] 收到Native SSH检查请求: ${call.method}');
+    
+    if (call.method == 'checkAndReconnect') {
+      try {
+        if (_globalAppProvider != null) {
+          debugPrint('✅ [Flutter] 调用handleNetworkReconnected...');
+          await _globalAppProvider!.handleNetworkReconnected();
+          debugPrint('✅ [Flutter] SSH检查完成');
+          return true;
+        } else {
+          debugPrint('⚠️ [Flutter] AppProvider为null，无法执行SSH检查');
+          return false;
+        }
+      } catch (e, stackTrace) {
+        debugPrint('❌ [Flutter] SSH检查失败: $e');
+        debugPrint('📋 [Flutter] 堆栈跟踪: $stackTrace');
+        return false;
+      }
+    }
+    
+    return null;
+  });
+  
+  debugPrint('✅ SSH检查MethodChannel已注册');
 }
 
 /// ✅ 初始化媒体控制监听器

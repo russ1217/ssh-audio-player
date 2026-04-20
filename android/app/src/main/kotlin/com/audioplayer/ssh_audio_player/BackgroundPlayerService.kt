@@ -1,4 +1,4 @@
-package com.audioplayer.ssh_audio_player
+qpackage com.audioplayer.ssh_audio_player
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -21,12 +21,16 @@ import android.net.NetworkRequest
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.Handler
+import android.os.Looper
 import io.flutter.plugin.common.MethodChannel
 
 class BackgroundPlayerService : Service() {
 
     companion object {
         private const val TAG = "BackgroundPlayerService"
+        // ✅ SSH监控定时器间隔（30秒）
+        private const val SSH_CHECK_INTERVAL_MS = 30_000L
     }
 
     private lateinit var wakeLock: PowerManager.WakeLock
@@ -35,6 +39,9 @@ class BackgroundPlayerService : Service() {
     
     // ✅ MethodChannel用于向Flutter层发送媒体控制命令
     private var mediaControlChannel: MethodChannel? = null
+    
+    // ✅ SSH监控MethodChannel
+    private var sshCheckChannel: MethodChannel? = null
     
     // 网络回调，用于保持网络连接活跃
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
@@ -46,6 +53,10 @@ class BackgroundPlayerService : Service() {
     // ✅ 当前播放状态（用于构建通知）
     private var currentTitle: String = "SSH Player"
     private var isCurrentlyPlaying: Boolean = false
+    
+    // ✅ SSH监控定时器
+    private val handler = Handler(Looper.getMainLooper())
+    private var sshCheckRunnable: Runnable? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -66,6 +77,9 @@ class BackgroundPlayerService : Service() {
         // ✅ 关键修复：将当前服务实例保存到 MediaSessionHelper
         MediaSessionHelper.backgroundService = this
         println("✅ MediaSessionHelper.backgroundService 已设置为当前服务实例")
+        
+        // ✅ 启动SSH监控定时器
+        startSshMonitoring()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -94,6 +108,9 @@ class BackgroundPlayerService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         Log.d(TAG, "🗑️ BackgroundPlayerService onDestroy 被调用")
+        
+        // ✅ 停止SSH监控定时器
+        stopSshMonitoring()
         
         // ✅ 确保释放 Wake Lock
         if (wakeLock.isHeld) {
@@ -432,5 +449,52 @@ class BackgroundPlayerService : Service() {
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(serviceChannel)
         }
+    }
+    
+    /**
+     * ✅ 启动SSH监控定时器
+     * 每30秒通过MethodChannel调用Flutter层的SSH检查方法
+     */
+    private fun startSshMonitoring() {
+        println("💓 启动SSH监控定时器（间隔: ${SSH_CHECK_INTERVAL_MS / 1000}秒）")
+        
+        sshCheckRunnable = object : Runnable {
+            override fun run() {
+                try {
+                    println("🔍 [Native] 定时触发SSH连接检查...")
+                    
+                    // ✅ 通过MethodChannel调用Flutter层的方法
+                    // 注意：这里需要获取FlutterEngine的MethodChannel
+                    // 由于Service中无法直接访问FlutterEngine，我们通过广播通知MainActivity
+                    
+                    val intent = Intent("com.audioplayer.ssh_audio_player.SSH_CHECK").apply {
+                        setPackage(packageName)
+                    }
+                    sendBroadcast(intent)
+                    println("📤 [Native] 已广播SSH检查请求")
+                    
+                } catch (e: Exception) {
+                    Log.e(TAG, "❌ SSH监控执行失败: ${e.message}")
+                    e.printStackTrace()
+                }
+                
+                // 继续调度下一次执行
+                handler.postDelayed(this, SSH_CHECK_INTERVAL_MS)
+            }
+        }
+        
+        // 立即执行第一次检查，然后每隔30秒执行一次
+        handler.post(sshCheckRunnable!!)
+    }
+    
+    /**
+     * ✅ 停止SSH监控定时器
+     */
+    private fun stopSshMonitoring() {
+        println("🛑 停止SSH监控定时器")
+        sshCheckRunnable?.let {
+            handler.removeCallbacks(it)
+        }
+        sshCheckRunnable = null
     }
 }

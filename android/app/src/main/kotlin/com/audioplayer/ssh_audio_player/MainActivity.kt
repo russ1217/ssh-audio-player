@@ -1,8 +1,8 @@
-package com.audioplayer.ssh_audio_player
+qpackage com.audioplayer.ssh_audio_player
 
 import android.content.BroadcastReceiver
 import android.content.Context
-import android.content.Intent
+qimport android.conqqtent.Intent
 import android.content.IntentFilter
 import android.net.Uri
 import android.os.Build
@@ -23,6 +23,9 @@ class MainActivity : FlutterActivity() {
     
     // ✅ 媒体控制广播接收器
     private var mediaControlReceiver: BroadcastReceiver? = null
+    
+    // ✅ SSH检查广播接收器
+    private var sshCheckReceiver: BroadcastReceiver? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -129,6 +132,9 @@ class MainActivity : FlutterActivity() {
         
         // ✅ 注册媒体控制广播接收器
         registerMediaControlReceiver()
+        
+        // ✅ 注册SSH检查广播接收器
+        registerSshCheckReceiver()
     }
     
     /**
