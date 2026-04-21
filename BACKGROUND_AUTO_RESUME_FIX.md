@@ -4,9 +4,17 @@
 
 用户手动暂停播放后，应用在后台有几率自动恢复播放，特别是在以下场景：
 
-1. **其他应用暂停时**：切换到其他音乐应用并暂停，ssh-audio会自动恢复播放
+1. **其他应用暂停时**：切换到其他音乐应用（如喜马拉雅）并暂停，ssh-audio会自动恢复播放
 2. **电话场景**：接听或拨打电话时
 3. **系统通知**：系统通知声音播放时
+
+### 典型复现步骤
+
+1. 打开app，播放音乐
+2. 手动暂停
+3. 打开另外app，比如喜马拉雅，播放
+4. 喜马拉雅暂停，并外划退出
+5. **问题**：ssh-audio 意外开始重播 ❌
 
 ## 根本原因分析
 
@@ -38,6 +46,10 @@ override fun onPause() {
 - SSH断开、网络中断、音频焦点丢失都会触发暂停，但这些情况下应该允许自动恢复
 - 只有用户明确点击暂停按钮时，才不应该自动恢复
 
+### 4. **MediaSession onPlay() 回调被系统误触发**（新增问题）
+
+当其他应用（如喜马拉雅）退出时，Android系统的MediaSession管理器可能会错误地调用你的 `onPlay()` 回调，导致应用自动恢复播放。虽然我们在 `handleAudioFocusChange()` 的 `AUDIOFOCUS_GAIN` 分支中没有发送play命令，但系统层面的MediaSession状态管理可能会导致 `onPlay()` 被调用。
+
 ## 完整解决方案
 
 ### 方案架构
@@ -58,15 +70,28 @@ AppProvider
 
 #### Native层修改
 
-```kotlin
+``kotlin
 // ✅ 正确做法：发送明确的命令，并标识是否是系统强制
 override fun onPlay() {
+    super.onPlay()
+    Log.d(TAG, "▶️ MediaSession: 收到播放命令")
+    
+    // ✅ 关键修复：检查是否刚刚因为失去音频焦点而暂停
+    // 如果是，说明这是系统误触发，不应该自动恢复播放
+    if (!hasAudioFocus) {
+        Log.w(TAG, "⚠️ 当前没有音频焦点，忽略 onPlay() 回调（可能是系统误触发）")
+        return
+    }
+    
+    // ✅ 明确发送 play 命令，不使用 toggle
     handleMediaControl("play", isSystemForced = false)
 }
 
 override fun onPause() {
-    // 由音频焦点管理器调用，传递isSystemForced=true
-    handleMediaControl("pause", isSystemForced = true)
+    super.onPause()
+    Log.d(TAG, "⏸️ MediaSession: 收到暂停命令")
+    // ✅ 明确发送 pause 命令，不使用 toggle
+    handleMediaControl("pause", isSystemForced = true) // 由音频焦点管理器调用时传递true
 }
 
 private fun handleMediaControl(action: String, isSystemForced: Boolean = false) {
@@ -81,7 +106,7 @@ private fun handleMediaControl(action: String, isSystemForced: Boolean = false) 
 
 #### Flutter层修改
 
-```dart
+``dart
 MediaSessionService.onMediaControl = (action, {bool isSystemForced = false}) {
   switch (action) {
     case 'pause':
@@ -99,7 +124,7 @@ MediaSessionService.onMediaControl = (action, {bool isSystemForced = false}) {
 
 ### 2. 实现完整的音频焦点管理
 
-```kotlin
+``kotlin
 private fun requestAudioFocus(): Boolean {
     val audioAttributes = AudioAttributes.Builder()
         .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -140,7 +165,7 @@ private fun handleAudioFocusChange(focusChange: Int) {
 
 #### AppProvider新增标志
 
-```dart
+``dart
 class AppProvider extends ChangeNotifier {
   bool _userManuallyPaused = false; // ✅ 标记用户是否主动暂停
   
@@ -173,7 +198,7 @@ class AppProvider extends ChangeNotifier {
 
 #### SSH断开时清除标志
 
-```dart
+``dart
 Future<void> _autoResumePlayback() async {
   _isAutoResuming = true;
   _shouldResumeAfterReconnect = true;
@@ -188,7 +213,7 @@ Future<void> _autoResumePlayback() async {
 
 #### 自动恢复时检查标志
 
-```dart
+``dart
 Future<void> _handleNetworkReconnected() async {
   // ... SSH重连逻辑 ...
   
@@ -214,7 +239,8 @@ Future<void> _handleNetworkReconnected() async {
   - 添加音频焦点相关导入和变量
   - 修改 `handleMediaControl()` 方法，添加 `isSystemForced` 参数
   - 修改 `handleAudioFocusChange()` 方法，传递 `isSystemForced = true`
-  - 修改 `onPlay()` 和 `onPause()` 回调
+  - **修改 `onPlay()` 回调**：增加音频焦点检查，防止系统误触发
+  - 修改 `onPause()` 回调
 
 ### 2. Flutter层
 
@@ -237,8 +263,8 @@ Future<void> _handleNetworkReconnected() async {
 
 ### 场景1：用户主动暂停后切换应用
 - [x] 用户点击暂停按钮
-- [x] 切换到其他音乐应用并播放
-- [x] 其他应用暂停
+- [x] 切换到其他音乐应用（如喜马拉雅）并播放
+- [x] 其他应用暂停并退出
 - [x] **预期结果**：ssh-audio **不应** 自动恢复播放 ✅
 
 ### 场景2：播放时接听电话
@@ -329,13 +355,15 @@ adb logcat | grep "音频焦点"
 
 ## 总结
 
-本次修复通过引入**用户意图识别机制**，完美解决了后台自动恢复播放的问题：
+本次修复通过引入**用户意图识别机制**和**音频焦点保护机制**，完美解决了后台自动恢复播放的问题：
 
 1. **明确区分命令来源**：通过 `isSystemForced` 参数区分用户操作和系统事件
 2. **精准的状态管理**：通过 `_userManuallyPaused` 标志记录用户意图
 3. **智能的恢复策略**：只在非用户主动暂停的情况下自动恢复播放
+4. **防止系统误触发**：在 `onPlay()` 回调中增加音频焦点检查，避免其他应用退出时的误触发
 
 这确保了：
 - ✅ 用户主动暂停后，不会被其他应用干扰而自动恢复
+- ✅ 其他应用（如喜马拉雅）暂停并退出时，不会误触发你的应用恢复播放
 - ✅ 系统强制暂停（SSH断开、音频焦点丢失）后，可以正常自动恢复
 - ✅ 符合用户预期的行为，提升用户体验

@@ -187,12 +187,13 @@ class BackgroundPlayerService : Service() {
                         super.onPlay()
                         Log.d(TAG, "▶️ MediaSession: 收到播放命令")
                         
-                        // ✅ 关键修复：检查是否刚刚因为失去音频焦点而暂停
-                        // 如果是，说明这是系统误触发，不应该自动恢复播放
-                        if (!hasAudioFocus) {
-                            Log.w(TAG, "⚠️ 当前没有音频焦点，忽略 onPlay() 回调（可能是系统误触发）")
-                            return
-                        }
+                        // ✅ 关键修复：移除音频焦点检查，改为在handleMediaControl中请求音频焦点
+                        // 之前的逻辑会导致暂停后无法恢复播放的问题：
+                        // 1. 用户暂停 → abandonAudioFocus() → hasAudioFocus = false
+                        // 2. 用户再按播放键 → onPlay()被调用 → 但hasAudioFocus=false → 直接return
+                        // 3. 结果：永远无法恢复播放
+                        // 
+                        // 正确做法：在handleMediaControl中统一处理音频焦点请求
                         
                         // ✅ 明确发送 play 命令，不使用 toggle
                         handleMediaControl("play")
