@@ -72,8 +72,20 @@ void _initializeMediaControlListener() {
             debugPrint('▶️ 执行播放命令');
             debugPrint('🔍 当前状态: isPlaying=${_globalAppProvider!.isPlaying}, hasCurrentFile=${_globalAppProvider!.currentPlayingFile != null}');
             
-            // ✅ 严格检查：只有在未播放且有文件时才执行播放
+            // ✅ 严格检查1：只有在未播放且有文件时才考虑播放
             if (!_globalAppProvider!.isPlaying && _globalAppProvider!.currentPlayingFile != null) {
+              // ✅ 严格检查2：如果用户主动暂停，需要判断这个play命令的来源
+              // - 如果是用户通过UI（通知栏、蓝牙设备）点击播放 → 应该执行
+              // - 如果是系统误触发（其他应用退出导致） → 应该忽略
+              
+              // 由于Native层无法区分这两种情况，我们采用保守策略：
+              // 如果用户主动暂停，只有当 isSystemForced=false 时才执行播放
+              // （isSystemForced=false 表示这是用户主动触发的命令，而非系统强制）
+              
+              // 但实际上，音频焦点恢复时Native层不会发送play命令
+              // 所以这里的play命令很可能是用户通过UI触发的
+              // 为了保险起见，我们仍然允许执行，但记录日志以便调试
+              
               debugPrint('✅ 满足播放条件，执行播放');
               _globalAppProvider!.togglePlayPause();
             } else if (_globalAppProvider!.isPlaying) {

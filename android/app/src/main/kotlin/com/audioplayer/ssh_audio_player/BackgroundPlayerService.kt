@@ -186,7 +186,15 @@ class BackgroundPlayerService : Service() {
                     override fun onPlay() {
                         super.onPlay()
                         Log.d(TAG, "▶️ MediaSession: 收到播放命令")
-                        // ✅ 关键修复：明确发送 play 命令，不使用 toggle
+                        
+                        // ✅ 关键修复：检查是否刚刚因为失去音频焦点而暂停
+                        // 如果是，说明这是系统误触发，不应该自动恢复播放
+                        if (!hasAudioFocus) {
+                            Log.w(TAG, "⚠️ 当前没有音频焦点，忽略 onPlay() 回调（可能是系统误触发）")
+                            return
+                        }
+                        
+                        // ✅ 明确发送 play 命令，不使用 toggle
                         handleMediaControl("play")
                     }
                     

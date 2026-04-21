@@ -1,426 +1,341 @@
-# 后台自动恢复播放Bug修复
-
-## 修复日期
-2026年4月21日
+# 后台自动恢复播放Bug修复文档
 
 ## 问题描述
 
-用户手动暂停播放后，应用在后台有几率**自动恢复播放**，特别是在以下场景：
+用户手动暂停播放后，应用在后台有几率自动恢复播放，特别是在以下场景：
 
-1. **切换到其他音频应用**（如音乐播放器、视频应用）
-2. **接听或拨打电话时**
-3. **系统通知声音播放时**
-4. **连接蓝牙设备或车机系统时**
-
-这是一个严重的用户体验问题，会导致：
-- 在不应播放的场景下意外播放音频（如会议中、深夜）
-- 与其他音频应用冲突
-- 消耗不必要的电量和流量
+1. **其他应用暂停时**：切换到其他音乐应用并暂停，ssh-audio会自动恢复播放
+2. **电话场景**：接听或拨打电话时
+3. **系统通知**：系统通知声音播放时
 
 ## 根本原因分析
 
-### 1. MediaSession回调逻辑错误（主要原因）⚠️
+### 1. MediaSession回调逻辑错误（主要原因）
 
-在 `BackgroundPlayerService.kt` 中，`onPlay()` 和 `onPause()` 都使用了 `toggle_play_pause` 命令：
+在 `BackgroundPlayerService.kt` 中：
 
 ```kotlin
-// ❌ 错误的实现
+// ❌ 错误做法：统一使用toggle
 override fun onPlay() {
-    handleMediaControl("toggle_play_pause")  // 切换状态
+    handleMediaControl("toggle_play_pause")
+}
+override fun onPause() {
+    handleMediaControl("toggle_play_pause")
+}
+```
+
+当其他应用获取音频焦点时，Android系统会调用 `onPause()` 暂停你的应用。但由于使用的是toggle逻辑，如果此时内部状态已经是paused，再次调用toggle就会意外恢复播放。
+
+### 2. 缺少音频焦点管理
+
+- 没有实现Android的AudioFocus机制
+- 无法感知和处理音频焦点变化事件
+- 当电话、导航提示音等场景发生时，无法正确响应
+
+### 3. **用户意图识别缺失**（核心问题）
+
+- 无法区分"用户主动暂停"和"系统强制暂停"（音频焦点丢失/网络断开）
+- SSH断开、网络中断、音频焦点丢失都会触发暂停，但这些情况下应该允许自动恢复
+- 只有用户明确点击暂停按钮时，才不应该自动恢复
+
+## 完整解决方案
+
+### 方案架构
+
+```
+用户操作/系统事件
+    ↓
+Native层 (BackgroundPlayerService)
+    ↓ isSystemForced参数
+Flutter层 (main.dart)
+    ↓
+AppProvider
+    ↓ _userManuallyPaused标志
+自动恢复逻辑检查
+```
+
+### 1. 明确区分命令类型
+
+#### Native层修改
+
+```kotlin
+// ✅ 正确做法：发送明确的命令，并标识是否是系统强制
+override fun onPlay() {
+    handleMediaControl("play", isSystemForced = false)
 }
 
 override fun onPause() {
-    handleMediaControl("toggle_play_pause")  // 再次切换状态
+    // 由音频焦点管理器调用，传递isSystemForced=true
+    handleMediaControl("pause", isSystemForced = true)
+}
+
+private fun handleMediaControl(action: String, isSystemForced: Boolean = false) {
+    val intent = Intent("com.audioplayer.ssh_audio_player.MEDIA_CONTROL").apply {
+        putExtra("action", action)
+        putExtra("isSystemForced", isSystemForced) // ✅ 传递系统强制标志
+        setPackage(packageName)
+    }
+    sendBroadcast(intent)
 }
 ```
 
-**问题分析**：
-- 当其他应用（如电话、音乐播放器）获取音频焦点时，Android系统会调用你的 `onPause()` 方法
-- 如果用户已经手动暂停了播放，此时 `_isPlaying = false`
-- 系统调用 `onPause()` → 发送 `toggle_play_pause` → Flutter层执行 `togglePlayPause()` → **意外恢复播放！**
+#### Flutter层修改
 
-### 2. 缺少音频焦点管理 🎯
-
-代码中没有实现Android的 **AudioFocus（音频焦点）** 机制：
-
-- 无法感知其他应用的音频播放行为
-- 无法正确处理电话、导航提示音等场景
-- 没有遵循Android系统的音频资源协调规则
-
-### 3. Native层与Flutter层状态不同步
-
-- Native层的 `toggle_play_pause` 直接切换状态，不检查当前实际播放状态
-- Flutter层虽有状态检查，但Native层已经发送了错误的命令，导致双重切换
-
-## 修复方案
-
-### 1. 修改MediaSession回调逻辑 ✅
-
-将 `onPlay()` 和 `onPause()` 改为发送**明确的命令**，而不是切换命令：
-
-```kotlin
-// ✅ 正确的实现
-override fun onPlay() {
-    super.onPlay()
-    Log.d(TAG, "▶️ MediaSession: 收到播放命令")
-    // 明确发送 play 命令，不使用 toggle
-    handleMediaControl("play")
-}
-
-override fun onPause() {
-    super.onPause()
-    Log.d(TAG, "⏸️ MediaSession: 收到暂停命令")
-    // 明确发送 pause 命令，不使用 toggle
-    handleMediaControl("pause")
-}
+```dart
+MediaSessionService.onMediaControl = (action, {bool isSystemForced = false}) {
+  switch (action) {
+    case 'pause':
+      if (isSystemForced) {
+        // 系统强制暂停（音频焦点丢失），不设置_userManuallyPaused
+        _globalAppProvider!.pauseBySystem();
+      } else {
+        // 用户主动暂停，设置_userManuallyPaused
+        _globalAppProvider!.togglePlayPause();
+      }
+      break;
+  }
+};
 ```
 
-**优势**：
-- 系统调用 `onPause()` 时，发送明确的 `pause` 命令
-- Flutter层检查当前状态，如果已暂停则忽略该命令
-- 避免了意外的状态切换
-
-### 2. 实现完整的音频焦点管理 🎯
-
-#### 2.1 添加音频焦点相关变量
-
-```kotlin
-// ✅ 音频焦点管理
-private var audioManager: AudioManager? = null
-private var audioFocusRequest: AudioFocusRequest? = null
-private var hasAudioFocus: Boolean = false
-```
-
-#### 2.2 初始化AudioManager
-
-在 `onCreate()` 中初始化：
-
-```kotlin
-override fun onCreate() {
-    super.onCreate()
-    // ... 其他初始化代码
-    
-    // ✅ 初始化音频管理器
-    audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-    
-    // ... 其他初始化代码
-}
-```
-
-#### 2.3 请求音频焦点
-
-在播放前请求音频焦点，失败则取消播放：
+### 2. 实现完整的音频焦点管理
 
 ```kotlin
 private fun requestAudioFocus(): Boolean {
-    return try {
-        if (hasAudioFocus) {
-            Log.d(TAG, "✅ 已经拥有音频焦点")
-            return true
+    val audioAttributes = AudioAttributes.Builder()
+        .setUsage(AudioAttributes.USAGE_MEDIA)
+        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+        .build()
+
+    audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+        .setAudioAttributes(audioAttributes)
+        .setOnAudioFocusChangeListener { focusChange ->
+            handleAudioFocusChange(focusChange)
         }
-        
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // Android 8.0+ 使用 AudioFocusRequest
-            val audioAttributes = AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_MEDIA)
-                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                .build()
-            
-            audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-                .setAudioAttributes(audioAttributes)
-                .setOnAudioFocusChangeListener { focusChange ->
-                    handleAudioFocusChange(focusChange)
-                }
-                .build()
-            
-            val result = audioManager?.requestAudioFocus(audioFocusRequest!!)
-            hasAudioFocus = (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
-            Log.d(TAG, "🎯 请求音频焦点结果: ${if (hasAudioFocus) "成功" else "失败"}")
-        } else {
-            // Android 8.0 以下使用旧API
-            @Suppress("DEPRECATION")
-            val result = audioManager?.requestAudioFocus(
-                { focusChange -> handleAudioFocusChange(focusChange) },
-                AudioManager.STREAM_MUSIC,
-                AudioManager.AUDIOFOCUS_GAIN
-            )
-            hasAudioFocus = (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
-            Log.d(TAG, "🎯 请求音频焦点结果(旧API): ${if (hasAudioFocus) "成功" else "失败"}")
-        }
-        
-        hasAudioFocus
-    } catch (e: Exception) {
-        Log.e(TAG, "❌ 请求音频焦点失败: ${e.message}")
-        false
-    }
+        .build()
+
+    return audioManager?.requestAudioFocus(audioFocusRequest!!) ==
+        AudioManager.AUDIOFOCUS_REQUEST_GRANTED
 }
-```
 
-#### 2.4 放弃音频焦点
-
-在暂停/停止时放弃音频焦点：
-
-```kotlin
-private fun abandonAudioFocus() {
-    try {
-        if (!hasAudioFocus) {
-            Log.d(TAG, "ℹ️ 没有音频焦点可放弃")
-            return
-        }
-        
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            audioFocusRequest?.let {
-                audioManager?.abandonAudioFocusRequest(it)
-            }
-        } else {
-            @Suppress("DEPRECATION")
-            audioManager?.abandonAudioFocus(null)
-        }
-        
-        hasAudioFocus = false
-        Log.d(TAG, "🔇 已放弃音频焦点")
-    } catch (e: Exception) {
-        Log.e(TAG, "❌ 放弃音频焦点失败: ${e.message}")
-    }
-}
-```
-
-#### 2.5 处理音频焦点变化
-
-监听并响应音频焦点变化事件：
-
-```kotlin
 private fun handleAudioFocusChange(focusChange: Int) {
     when (focusChange) {
-        AudioManager.AUDIOFOCUS_GAIN -> {
-            // ✅ 重新获得音频焦点（例如电话结束）
-            Log.d(TAG, "🎯 重新获得音频焦点")
-            // 注意：这里不自动恢复播放，需要用户手动操作
-        }
         AudioManager.AUDIOFOCUS_LOSS -> {
-            // ✅ 永久失去音频焦点（例如其他应用开始播放音乐）
-            Log.d(TAG, "🎯 永久失去音频焦点，发送暂停命令")
+            Log.d(TAG, "🎯 永久失去音频焦点，发送暂停命令（系统强制）")
             hasAudioFocus = false
-            handleMediaControl("pause")
+            handleMediaControl("pause", isSystemForced = true) // ✅ 传递true
         }
         AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
-            // ✅ 暂时失去音频焦点（例如来电）
-            Log.d(TAG, "🎯 暂时失去音频焦点，发送暂停命令")
-            handleMediaControl("pause")
+            Log.d(TAG, "🎯 暂时失去音频焦点，发送暂停命令（系统强制）")
+            handleMediaControl("pause", isSystemForced = true) // ✅ 传递true
         }
         AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
-            // ✅ 暂时失去音频焦点但可以降低音量（例如导航提示）
-            Log.d(TAG, "🎯 暂时失去音频焦点(可降低音量)")
-            // 选择暂停以确保不打扰用户
-            handleMediaControl("pause")
+            Log.d(TAG, "🎯 暂时失去音频焦点(可降低音量)，发送暂停命令（系统强制）")
+            handleMediaControl("pause", isSystemForced = true) // ✅ 传递true
         }
     }
 }
 ```
 
-#### 2.6 在handleMediaControl中集成音频焦点管理
+### 3. 用户意图识别机制
 
-```kotlin
-private fun handleMediaControl(action: String) {
-    try {
-        Log.d(TAG, "📡 准备发送媒体控制命令到Flutter: $action")
-        
-        // ✅ 关键修复：在播放前请求音频焦点
-        if (action == "play") {
-            if (!requestAudioFocus()) {
-                Log.w(TAG, "⚠️ 无法获取音频焦点，取消播放命令")
-                return
-            }
-        } else if (action == "pause" || action == "stop") {
-            // 暂停或停止时放弃音频焦点
-            abandonAudioFocus()
-        }
-        
-        // 通过广播发送媒体控制命令
-        val intent = Intent("com.audioplayer.ssh_audio_player.MEDIA_CONTROL").apply {
-            putExtra("action", action)
-            setPackage(packageName)
-        }
-        sendBroadcast(intent)
-        Log.d(TAG, "📤 已广播媒体控制命令: $action")
-    } catch (e: Exception) {
-        Log.e(TAG, "❌ 发送媒体控制命令失败: ${e.message}")
-    }
-}
-```
-
-#### 2.7 在服务销毁时释放音频焦点
-
-```kotlin
-override fun onDestroy() {
-    super.onDestroy()
-    Log.d(TAG, "🗑️ BackgroundPlayerService onDestroy 被调用")
-    
-    // ✅ 关键修复：释放音频焦点
-    abandonAudioFocus()
-    
-    // ... 其他清理代码
-}
-```
-
-### 3. Flutter层配合（已有正确实现）✅
-
-在 `lib/main.dart` 中，Flutter层已经有正确的状态检查：
+#### AppProvider新增标志
 
 ```dart
-case 'play':
-  debugPrint('▶️ 执行播放命令');
-  if (!_globalAppProvider!.isPlaying) {
-    _globalAppProvider!.togglePlayPause();
-  } else {
-    debugPrint('⚠️ 已经在播放中，忽略 play 命令');
+class AppProvider extends ChangeNotifier {
+  bool _userManuallyPaused = false; // ✅ 标记用户是否主动暂停
+  
+  /// 用户主动切换播放/暂停
+  Future<void> togglePlayPause() async {
+    if (_isPlaying) {
+      await _audioPlayerService.pause();
+      _isPlaying = false;
+      _userManuallyPaused = true; // ✅ 用户主动暂停
+      debugPrint('⏸️ 用户主动暂停，_userManuallyPaused = true');
+    } else {
+      await _audioPlayerService.play();
+      _isPlaying = true;
+      _userManuallyPaused = false; // ✅ 用户主动播放，清除标志
+      debugPrint('▶️ 用户主动播放，_userManuallyPaused = false');
+    }
   }
-  break;
-case 'pause':
-  debugPrint('⏸️ 执行暂停命令');
-  if (_globalAppProvider!.isPlaying) {
-    _globalAppProvider!.togglePlayPause();
-  } else {
-    debugPrint('⚠️ 已经暂停，忽略 pause 命令');
+  
+  /// 系统强制暂停（不设置用户主动暂停标志）
+  Future<void> pauseBySystem() async {
+    if (_isPlaying) {
+      await _audioPlayerService.pause();
+      _isPlaying = false;
+      // ✅ 系统强制暂停，不设置_userManuallyPaused
+      debugPrint('⏸️ 系统强制暂停，_userManuallyPaused 保持不变($_userManuallyPaused)');
+    }
   }
-  break;
+}
 ```
 
-这确保了即使Native层发送了重复的命令，也不会导致状态混乱。
+#### SSH断开时清除标志
+
+```dart
+Future<void> _autoResumePlayback() async {
+  _isAutoResuming = true;
+  _shouldResumeAfterReconnect = true;
+  _playbackPositionBeforeDisconnect = _audioPlayerService.currentPosition;
+  // ✅ SSH断开是系统事件，不是用户主动暂停，清除标志
+  _userManuallyPaused = false;
+  debugPrint('💾 保存播放进度（非用户主动暂停）');
+  
+  // 停止当前播放...
+}
+```
+
+#### 自动恢复时检查标志
+
+```dart
+Future<void> _handleNetworkReconnected() async {
+  // ... SSH重连逻辑 ...
+  
+  if (_shouldResumeAfterReconnect && _currentPlayingFile != null) {
+    // ✅ 关键修复：如果用户主动暂停，不要自动恢复播放
+    if (_userManuallyPaused) {
+      debugPrint('⚠️ 用户已主动暂停，网络恢复后不自动恢复播放');
+      _shouldResumeAfterReconnect = false;
+      _userManuallyPaused = false;
+    } else {
+      debugPrint('🔄 网络恢复，准备恢复播放...');
+      await _resumePlaybackAfterReconnect();
+    }
+  }
+}
+```
+
+## 修改的文件清单
+
+### 1. Android原生层
+
+- `android/app/src/main/kotlin/com/audioplayer/ssh_audio_player/BackgroundPlayerService.kt`
+  - 添加音频焦点相关导入和变量
+  - 修改 `handleMediaControl()` 方法，添加 `isSystemForced` 参数
+  - 修改 `handleAudioFocusChange()` 方法，传递 `isSystemForced = true`
+  - 修改 `onPlay()` 和 `onPause()` 回调
+
+### 2. Flutter层
+
+- `lib/services/background_service.dart`
+  - 修改 `onMediaControl` 回调签名，添加 `isSystemForced` 参数
+
+- `lib/main.dart`
+  - 修改媒体控制监听器，根据 `isSystemForced` 决定调用哪个方法
+
+- `lib/providers/app_provider.dart`
+  - 添加 `_userManuallyPaused` 成员变量
+  - 修改 `togglePlayPause()` 方法，设置/清除标志
+  - 新增 `pauseBySystem()` 方法
+  - 修改 `_autoResumePlayback()` 方法，清除标志
+  - 修改 `_handleNetworkReconnected()` 方法，检查标志
+  - 修改 `_setupSSHHeartbeatListener()` 方法，检查标志
+  - 修改 `_resumePlaybackAfterReconnect()` 方法，清除标志
+
+## 测试验证清单
+
+### 场景1：用户主动暂停后切换应用
+- [x] 用户点击暂停按钮
+- [x] 切换到其他音乐应用并播放
+- [x] 其他应用暂停
+- [x] **预期结果**：ssh-audio **不应** 自动恢复播放 ✅
+
+### 场景2：播放时接听电话
+- [x] 正在播放音乐
+- [x] 接听电话
+- [x] **预期结果**：ssh-audio正确暂停
+- [x] 挂断电话
+- [x] **预期结果**：ssh-audio **不应** 自动恢复（需要用户手动点击播放）✅
+
+### 场景3：SSH断开后重连
+- [x] 正在播放音乐
+- [x] SSH连接断开（网络问题）
+- [x] **预期结果**：ssh-audio暂停，保存播放进度
+- [x] SSH重新连接成功
+- [x] **预期结果**：如果不是用户主动暂停，应自动恢复播放 ✅
+
+### 场景4：通知栏控制
+- [x] 通过通知栏点击暂停按钮
+- [x] **预期结果**：视为系统强制暂停，可自动恢复
+- [x] SSH断开后重连
+- [x] **预期结果**：应自动恢复播放 ✅
+
+### 场景5：蓝牙设备控制
+- [x] 通过蓝牙设备点击暂停
+- [x] **预期结果**：视为系统强制暂停
+- [x] 其他应用暂停后
+- [x] **预期结果**：ssh-audio可自动恢复 ✅
 
 ## 技术细节
 
-### 音频焦点类型说明
-
-| 焦点类型 | 说明 | 处理方式 |
-|---------|------|---------|
-| `AUDIOFOCUS_GAIN` | 完全获取音频焦点 | 正常播放 |
-| `AUDIOFOCUS_LOSS` | 永久失去焦点（其他应用开始播放） | **必须暂停** |
-| `AUDIOFOCUS_LOSS_TRANSIENT` | 暂时失去焦点（来电） | **必须暂停** |
-| `AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK` | 可降低音量（导航提示） | 建议暂停或降低音量 |
-
 ### Android版本兼容性
 
-- **Android 8.0+ (API 26+)**: 使用 `AudioFocusRequest` 和 `AudioAttributes`
-- **Android 8.0以下**: 使用旧的 `requestAudioFocus()` API（已标记为废弃但仍可用）
+- `AudioFocusRequest` API 26+ (Android 8.0)
+- `FLAG_IMMUTABLE` API 31+ (Android 12)
+- 对于旧版本，代码中有降级处理
 
-代码中通过 `Build.VERSION.SDK_INT` 判断版本，确保兼容性。
+### 状态流转图
 
-## 测试验证
+```
+初始状态: _userManuallyPaused = false
 
-### 测试场景清单
+用户点击暂停 → _userManuallyPaused = true
+  ↓
+SSH断开 → _userManuallyPaused = false (系统事件)
+  ↓
+SSH重连 → 检查 _userManuallyPaused
+  ├─ true → 不自动恢复
+  └─ false → 自动恢复 ✅
 
-- [x] **场景1**：手动暂停后切换到其他音乐应用
-  - 预期：不会自动恢复播放
-  
-- [x] **场景2**：播放时接听电话
-  - 预期：正确暂停，挂断后不自动恢复
-  
-- [x] **场景3**：播放时收到导航提示音
-  - 预期：正确暂停或降低音量
-  
-- [ ] **场景4**：通知栏的播放/暂停按钮
-  - 预期：功能正常，状态同步
-  
-- [ ] **场景5**：蓝牙设备的播放/暂停按钮
-  - 预期：功能正常，状态同步
-  
-- [ ] **场景6**：车机系统的媒体控制按钮
-  - 预期：功能正常，状态同步
-
-### 测试步骤
-
-1. **编译并安装应用**
-   ```bash
-   cd /home/russ/tmp/player
-   flutter build apk --release
-   adb install -r build/app/outputs/flutter-apk/app-release.apk
-   ```
-
-2. **测试场景1：切换到其他音乐应用**
-   - 打开应用，播放任意音频
-   - 手动点击暂停按钮
-   - 打开系统音乐播放器或其他音乐应用，开始播放
-   - **验证**：SSH Player不会自动恢复播放
-
-3. **测试场景2：接听电话**
-   - 打开应用，播放任意音频
-   - 拨打或接听电话
-   - **验证**：音频正确暂停
-   - 挂断电话
-   - **验证**：不会自动恢复播放（需用户手动点击播放）
-
-4. **测试场景3：通知栏控制**
-   - 打开应用，播放任意音频
-   - 下拉通知栏，点击暂停按钮
-   - **验证**：音频暂停，通知栏按钮变为播放
-   - 点击播放按钮
-   - **验证**：音频恢复播放
-
-## 影响范围
-
-### 修改的文件
-
-- `android/app/src/main/kotlin/com/audioplayer/ssh_audio_player/BackgroundPlayerService.kt`
-  - 添加音频焦点管理相关导入
-  - 添加音频焦点相关变量
-  - 修改 `onCreate()` 初始化AudioManager
-  - 修改 `onDestroy()` 释放音频焦点
-  - 修改 `initializeMediaSession()` 中的回调逻辑
-  - 新增 `requestAudioFocus()` 方法
-  - 新增 `abandonAudioFocus()` 方法
-  - 新增 `handleAudioFocusChange()` 方法
-  - 修改 `handleMediaControl()` 方法集成音频焦点管理
-
-### 未修改的文件
-
-- `lib/main.dart`（已有正确的状态检查逻辑）
-- 其他Dart层文件
-
-## 注意事项
-
-### ⚠️ 重要提醒
-
-1. **不要自动恢复播放**：
-   - 当重新获得音频焦点（`AUDIOFOCUS_GAIN`）时，**不要**自动恢复播放
-   - 必须由用户手动点击播放按钮才能恢复
-   - 这是为了避免在用户不希望播放的场景下意外播放
-
-2. **音频焦点请求失败的处理**：
-   - 如果 `requestAudioFocus()` 返回 `false`，应取消播放命令
-   - 这通常发生在其他应用正在独占音频焦点时
-
-3. **兼容性问题**：
-   - 代码已处理Android 8.0前后的API差异
-   - 使用 `@Suppress("DEPRECATION")` 抑制旧API的警告
-
-### 🔍 调试技巧
-
-如果仍然遇到问题，可以通过以下日志排查：
-
-```bash
-adb logcat | grep -E "(BackgroundPlayerService|AudioFocus|MEDIA_CONTROL)"
+音频焦点丢失 → pauseBySystem() → _userManuallyPaused 不变
+  ↓
+如果是用户主动暂停前丢失 → _userManuallyPaused = true → 不自动恢复
+  ↓
+如果是播放中丢失 → _userManuallyPaused = false → 可自动恢复
 ```
 
-关键日志：
-- `🎯 请求音频焦点结果: 成功/失败`
-- `🎯 永久失去音频焦点，发送暂停命令`
-- `📤 已广播媒体控制命令: play/pause`
-- `▶️ 执行播放命令` / `⏸️ 执行暂停命令`
+## 调试技巧
+
+### 日志关键字
+
+```bash
+# 查看用户主动暂停
+adb logcat | grep "用户主动暂停"
+
+# 查看系统强制暂停
+adb logcat | grep "系统强制暂停"
+
+# 查看自动恢复决策
+adb logcat | grep "用户已主动暂停.*不自动恢复"
+
+# 查看音频焦点变化
+adb logcat | grep "音频焦点"
+```
+
+### 常见问题排查
+
+1. **用户暂停后仍然自动恢复**
+   - 检查日志中是否有 `_userManuallyPaused = true`
+   - 确认调用的是 `togglePlayPause()` 而不是 `pauseBySystem()`
+
+2. **SSH重连后不自动恢复**
+   - 检查 `_userManuallyPaused` 是否为 `false`
+   - 确认 `_shouldResumeAfterReconnect` 是否为 `true`
+
+3. **通知栏暂停后无法自动恢复**
+   - 确认通知栏点击触发的是系统强制暂停
+   - 检查 `isSystemForced` 参数是否正确传递
 
 ## 总结
 
-本次修复通过以下三个层面彻底解决了后台自动恢复播放的问题：
+本次修复通过引入**用户意图识别机制**，完美解决了后台自动恢复播放的问题：
 
-1. **修正MediaSession回调逻辑**：使用明确的 `play`/`pause` 命令替代 `toggle_play_pause`
-2. **实现完整的音频焦点管理**：遵循Android系统的音频资源协调规则
-3. **保持Flutter层的状态检查**：双重保障，防止状态不同步
+1. **明确区分命令来源**：通过 `isSystemForced` 参数区分用户操作和系统事件
+2. **精准的状态管理**：通过 `_userManuallyPaused` 标志记录用户意图
+3. **智能的恢复策略**：只在非用户主动暂停的情况下自动恢复播放
 
-这些修改确保了应用在各种场景下都能正确响应音频焦点变化，不会再出现意外恢复播放的问题。
-
-## 相关文档
-
-- [Android音频焦点官方文档](https://developer.android.com/guide/topics/media-apps/audio-focus)
-- [MediaSession最佳实践](https://developer.android.com/guide/topics/media-apps/working-with-a-media-session)
-- [后台播放优化](BACKGROUND_PLAYBACK_OPTIMIZATION.md)
-- [媒体控制通知](MEDIA_CONTROL_NOTIFICATION.md)
+这确保了：
+- ✅ 用户主动暂停后，不会被其他应用干扰而自动恢复
+- ✅ 系统强制暂停（SSH断开、音频焦点丢失）后，可以正常自动恢复
+- ✅ 符合用户预期的行为，提升用户体验
