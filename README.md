@@ -1,250 +1,218 @@
-# SSH 音频播放器
+# SSH Audio Player
 
-一个基于 Flutter 开发的 Android 音频播放器应用，支持通过 SSH 访问远程服务器播放音频文件。
+A Flutter-based Android audio player application that supports playing audio files from remote servers via SSH.
 
-## 功能特性
+## Features
 
-### ✅ 已实现功能
+### ✅ Implemented Features
 
-1. **SSH 远程访问**
-   - 支持密码认证
-   - 支持私钥认证
-   - 多服务器配置管理
-   - 浏览远程服务器文件目录
+1. **SSH Remote Access**
+   - Password authentication support
+   - Private key authentication support
+   - Multiple server configuration management
+   - Browse remote server file directories
 
-2. **音频播放**
-   - 支持主流音频格式：MP3, WAV, FLAC, AAC, OGG, M4A, WMA, OPUS, AIFF
-   - 支持视频文件提取音频播放：MP4, FLV, MKV, AVI, MOV, WMV, WEBM, M4V
-   - 后台播放支持（应用切换到后台继续播放）
+2. **Audio Playback**
+   - Support for mainstream audio formats: MP3, WAV, FLAC, AAC, OGG, M4A, WMA, OPUS, AIFF
+   - Support for extracting and playing audio from video files: MP4, FLV, MKV, AVI, MOV, WMV, WEBM, M4V
+   - Background playback support (continues playing when app is in background)
 
-3. **播放控制**
-   - 播放/暂停
-   - 停止
-   - 快进（10秒）
-   - 快退（10秒）
-   - 进度条拖拽定位
-   - 上一曲/下一曲
+3. **Playback Controls**
+   - Play/Pause
+   - Stop
+   - Fast forward (10 seconds)
+   - Rewind (10 seconds)
+   - Progress bar seeking
+   - Previous/Next track
 
-4. **播放列表管理**
-   - 添加单个文件到播放列表
-   - 添加整个目录到播放列表
-   - 顺序播放目录下文件
-   - 保存播放列表到本地数据库
-   - 播放列表持久化存储
+4. **Playlist Management**
+   - Add single files to playlist
+   - Add entire directories to playlist
+   - Sequential playback of directory files
+   - Save playlists to local database
+   - Persistent playlist storage
 
-5. **定时关闭**
-   - 按时间定时关闭（15分钟、30分钟、1小时、2小时、3小时、6小时）
-   - 按播放文件数量定时关闭
-   - 可随时取消定时
+5. **Sleep Timer**
+   - Time-based timer (15min, 30min, 1hr, 2hr, 3hr, 6hr)
+   - File count-based timer
+   - Cancel timer at any time
 
-6. **UI 特性**
-   - Material Design 3 设计风格
-   - 支持亮色/暗色主题（跟随系统）
-   - 底部播放控制栏
-   - 文件浏览器界面
-   - 播放列表管理界面
-   - SSH 配置管理界面
+6. **UI Features**
+   - Material Design 3 style
+   - Light/Dark theme support (follows system)
+   - Bottom playback control bar
+   - File browser interface
+   - Playlist management interface
+   - SSH configuration management interface
 
-## 技术栈
+7. **Advanced Features**
+   - Media notification with playback controls
+   - Network monitoring and auto-reconnection
+   - Smart pre-download optimization
+   - Cache management
+   - Battery optimization handling
+   - Playback position restoration
 
-- **Flutter** - 跨平台 UI 框架
-- **Dart** - 编程语言
-- **dartssh2** - SSH 客户端库
-- **just_audio** - 音频播放
-- **audio_service** - 后台音频服务
-- **sqflite** - 本地 SQLite 数据库
-- **provider** - 状态管理
-- **path_provider** - 获取系统路径
-- **uuid** - 生成唯一 ID
+## Tech Stack
 
-## 项目结构
+- **Flutter** - Cross-platform UI framework
+- **Dart** - Programming language
+- **dartssh2** - SSH client library
+- **just_audio** - Audio playback
+- **audio_service** - Background audio service
+- **sqflite** - Local SQLite database
+- **provider** - State management
+- **path_provider** - System path access
+- **uuid** - Unique ID generation
+
+## Project Structure
 
 ```
 lib/
-├── main.dart                    # 应用入口
-├── models/                      # 数据模型
-│   ├── ssh_config.dart         # SSH 配置模型
-│   ├── media_file.dart         # 媒体文件模型
-│   └── playlist.dart           # 播放列表模型
-├── services/                    # 服务层
-│   ├── ssh_service.dart        # SSH 连接服务
-│   ├── audio_player_service.dart  # 音频播放服务
-│   ├── database_service.dart   # 数据库服务
-│   └── timer_service.dart      # 定时服务
-├── providers/                   # 状态管理
-│   └── app_provider.dart       # 全局状态管理
-├── screens/                     # 页面
-│   ├── home_screen.dart        # 主页和文件浏览器
-│   ├── playlist_screen.dart    # 播放列表页面
-│   └── ssh_config_screen.dart  # SSH 配置页面
-└── widgets/                     # UI 组件
-    ├── file_list_item.dart     # 文件列表项
-    └── bottom_player_bar.dart  # 底部播放控制栏
+├── main.dart                    # Application entry point
+├── models/                      # Data models
+│   ├── ssh_config.dart         # SSH configuration model
+│   ├── media_file.dart         # Media file model
+│   └── playlist.dart           # Playlist model
+├── services/                    # Service layer
+│   ├── ssh_service.dart        # SSH connection service
+│   ├── audio_player_service.dart  # Audio playback service
+│   ├── database_service.dart   # Database service
+│   └── timer_service.dart      # Timer service
+├── providers/                   # State management
+│   └── app_provider.dart       # Global state management
+├── screens/                     # Screens
+│   ├── home_screen.dart        # Home and file browser
+│   ├── playlist_screen.dart    # Playlist screen
+│   └── ssh_config_screen.dart  # SSH configuration screen
+└── widgets/                     # UI components
+    ├── file_list_item.dart     # File list item
+    └── bottom_player_bar.dart  # Bottom playback control bar
 ```
 
-## 环境要求
+## Requirements
 
 - Flutter SDK >= 3.2.0
 - Dart SDK >= 3.2.0
-- Android SDK (最低 API 21, 目标 API 34)
+- Android SDK (Minimum API 21, Target API 34)
 - JDK 11+
 
-## 安装和构建
+## Installation & Build
 
-### 1. 安装 Flutter
+### 1. Install Flutter
 
-参考官方文档：https://flutter.dev/docs/get-started/install
+Refer to the official documentation: https://flutter.dev/docs/get-started/install
 
-### 2. 获取依赖
+### 2. Get Dependencies
 
 ```bash
 flutter pub get
 ```
 
-### 3. 连接设备
-
-确保已连接 Android 设备或启动模拟器：
-
-```bash
-flutter devices
-```
-
-### 4. 运行应用
+### 3. Run the App
 
 ```bash
 flutter run
 ```
 
-### 5. 构建 APK
+### 4. Build APK
 
-**调试版：**
-```bash
-flutter build apk
-```
-
-**发布版：**
 ```bash
 flutter build apk --release
 ```
 
-**App Bundle（用于 Google Play）：**
-```bash
-flutter build appbundle --release
-```
+The APK will be generated at: `build/app/outputs/flutter-apk/app-release.apk`
 
-## 使用指南
+## Usage Guide
 
-### 1. 配置 SSH 服务器
+### Configure SSH Server
 
-1. 打开应用，点击"设置"标签
-2. 点击"SSH 服务器配置"
-3. 点击右下角"+"添加新服务器
-4. 填写以下信息：
-   - **名称**：服务器标识名
-   - **主机地址**：服务器 IP 或域名
-   - **端口**：SSH 端口（默认 22）
-   - **用户名**：SSH 用户名
-   - **密码**：SSH 密码
-   - **初始路径**：登录后默认进入的目录
-5. 点击"保存"
+1. Open the app and navigate to SSH Configuration
+2. Click "Add Server"
+3. Enter server details:
+   - **Name**: A friendly name for the server
+   - **Host**: Server IP address or domain
+   - **Port**: SSH port (default: 22)
+   - **Username**: SSH username
+   - **Authentication Method**: Password or Private Key
+   - **Password/Key**: Enter password or paste private key content
+4. Save the configuration
+5. Test the connection
 
-### 2. 连接服务器
+### Browse and Play Files
 
-1. 在 SSH 配置列表中找到目标服务器
-2. 点击"登录"图标
-3. 连接成功后自动进入初始目录
+1. Select a configured server from the home screen
+2. Browse through directories to find audio files
+3. Tap on a file to start playback
+4. Use the bottom control bar to control playback
 
-### 3. 浏览和播放文件
+### Manage Playlist
 
-1. 在文件浏览器中点击文件夹进入子目录
-2. 点击音频/视频文件开始播放
-3. 长按文件可查看更多选项：
-   - 播放
-   - 添加到播放列表
-   - 查看文件信息
+1. Long press on a file or directory to add to playlist
+2. Navigate to the Playlist tab to view saved playlists
+3. Create new playlists or manage existing ones
+4. Play files in sequence from the playlist
 
-### 4. 管理播放列表
+### Set Sleep Timer
 
-1. 切换到"播放列表"标签
-2. 查看当前播放队列
-3. 点击文件可直接播放
-4. 点击"..."可删除单个文件
-5. 点击"保存"图标可将播放列表保存到数据库
-6. 点击"清空"图标可清空当前播放列表
+1. Tap the timer icon in the playback controls
+2. Choose time duration or file count
+3. The app will automatically stop playback when timer expires
 
-### 5. 使用定时关闭
+## Advanced Documentation
 
-1. 打开"设置"标签
-2. 点击"定时关闭"
-3. 选择预设时间或自定义文件数量
-4. 定时启动后将在指定时间/文件数后自动停止播放
+For detailed technical documentation, see:
 
-## 播放控制
+- [Background Playback](BACKGROUND_PLAYBACK.md) - Background playback implementation
+- [Media Control Notification](MEDIA_CONTROL_NOTIFICATION.md) - Notification controls
+- [Network Monitor](NETWORK_MONITOR.md) - Network monitoring and reconnection
+- [Playlist Enhancement](PLAYLIST_ENHANCEMENT.md) - Playlist features
+- [Local File Playback](LOCAL_FILE_PLAYBACK.md) - Local file support
+- [Development Guide](DEVELOPMENT.md) - Development notes
 
-底部播放栏提供以下功能：
+## Troubleshooting
 
-- **进度条**：拖拽跳转到任意位置
-- **上一曲** ⏮️：播放上一首
-- **快退** ⏪：后退 10 秒
-- **播放/暂停** ▶️⏸️：切换播放状态
-- **快进** ⏩：前进 10 秒
-- **下一曲** ⏭️：播放下一首
-- **停止** ⏹️：停止播放
+### Common Issues
 
-## 开发说明
+1. **Connection Failed**
+   - Verify SSH credentials are correct
+   - Check network connectivity
+   - Ensure SSH service is running on the server
+   - Verify firewall allows SSH connections
 
-### 添加新的音频格式支持
+2. **No Sound**
+   - Check device volume settings
+   - Ensure audio focus is not taken by another app
+   - Try restarting the app
 
-在 `lib/models/media_file.dart` 中修改：
+3. **Playback Stuttering**
+   - Check network stability
+   - Reduce predownload limit in settings
+   - Try lower quality audio files
 
-```dart
-bool get isAudio {
-  final ext = _getExtension();
-  return ['mp3', 'wav', 'flac', /* 添加新格式 */].contains(ext);
-}
-```
+4. **App Crashes**
+   - Clear app cache and data
+   - Reinstall the app
+   - Check Android version compatibility
 
-### 自定义快进/快退时间
+## Contributing
 
-在 `lib/widgets/bottom_player_bar.dart` 中修改：
+Contributions are welcome! Please feel free to submit issues and pull requests.
 
-```dart
-// 修改这里的秒数
-provider.seekBackward(const Duration(seconds: 10))
-provider.seekForward(const Duration(seconds: 10))
-```
+## License
 
-### 添加更多定时选项
+This project is open source. See LICENSE file for details.
 
-在 `lib/screens/home_screen.dart` 的 `TimerPickerSheet` 中添加：
+## Author
 
-```dart
-_TimerButton(context, duration: const Duration(hours: 8)),
-```
+- **Russ Rao** - russ.rao@outlook.com
+- GitHub: [@russ1217](https://github.com/russ1217)
 
-## 已知限制
+## Acknowledgments
 
-1. **SSH 文件下载**：大文件可能需要缓冲时间
-2. **本地缓存**：当前实现会在播放时下载完整文件到临时目录
-3. **并发连接**：暂时只支持同时连接一个服务器
-4. **私钥认证**：私钥认证功能已预留，需要额外实现
+Thanks to the following open source projects:
 
-## 后续优化方向
-
-- [ ] 文件流式播放（无需下载完整文件）
-- [ ] 支持同时连接多个服务器
-- [ ] 播放历史记录
-- [ ] 均衡器和音效设置
-- [ ] 睡眠定时倒计时显示
-- [ ] 通知栏播放控制
-- [ ] 耳机线控支持
-- [ ] 离线播放列表缓存
-- [ ] 搜索远程文件功能
-
-## 许可证
-
-MIT License
-
-## 反馈和问题
-
-如有问题或建议，欢迎提交 Issue。
+- [Flutter](https://flutter.dev/)
+- [just_audio](https://pub.dev/packages/just_audio)
+- [audio_service](https://pub.dev/packages/audio_service)
+- [dartssh2](https://pub.dev/packages/dartssh2)
