@@ -24,6 +24,10 @@ import android.os.PowerManager
 import android.os.Handler
 import android.os.Looper
 import io.flutter.plugin.common.MethodChannel
+// ✅ 新增：音频焦点相关导入
+import android.media.AudioManager
+import android.media.AudioFocusRequest
+import android.media.AudioAttributes
 
 class BackgroundPlayerService : Service() {
 
@@ -57,6 +61,11 @@ class BackgroundPlayerService : Service() {
     // ✅ SSH监控定时器
     private val handler = Handler(Looper.getMainLooper())
     private var sshCheckRunnable: Runnable? = null
+    
+    // ✅ 音频焦点管理
+    private var audioManager: AudioManager? = null
+    private var audioFocusRequest: AudioFocusRequest? = null
+    private var hasAudioFocus: Boolean = false
 
     override fun onCreate() {
         super.onCreate()
@@ -67,6 +76,9 @@ class BackgroundPlayerService : Service() {
         val powerManager = getSystemService(POWER_SERVICE) as PowerManager
         wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Player::WakeLock")
         wakeLock.setReferenceCounted(false)
+        
+        // ✅ 初始化音频管理器
+        audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         
         // Register network callback to keep network active
         registerNetworkCallback()
@@ -111,6 +123,9 @@ class BackgroundPlayerService : Service() {
         
         // ✅ 停止SSH监控定时器
         stopSshMonitoring()
+        
+        // ✅ 关键修复：释放音频焦点
+        abandonAudioFocus()
         
         // ✅ 确保释放 Wake Lock
         if (wakeLock.isHeld) {
@@ -170,33 +185,33 @@ class BackgroundPlayerService : Service() {
                 setCallback(object : MediaSessionCompat.Callback() {
                     override fun onPlay() {
                         super.onPlay()
-                        println("▶️ MediaSession: 收到播放命令")
-                        // ✅ 关键修复：车机的 play/pause 是同一个键，统一使用 toggle 逻辑
-                        handleMediaControl("toggle_play_pause")
+                        Log.d(TAG, "▶️ MediaSession: 收到播放命令")
+                        // ✅ 关键修复：明确发送 play 命令，不使用 toggle
+                        handleMediaControl("play")
                     }
                     
                     override fun onPause() {
                         super.onPause()
-                        println("⏸️ MediaSession: 收到暂停命令")
-                        // ✅ 关键修复：车机的 play/pause 是同一个键，统一使用 toggle 逻辑
-                        handleMediaControl("toggle_play_pause")
+                        Log.d(TAG, "⏸️ MediaSession: 收到暂停命令")
+                        // ✅ 关键修复：明确发送 pause 命令，不使用 toggle
+                        handleMediaControl("pause")
                     }
                     
                     override fun onStop() {
                         super.onStop()
-                        println("⏹️ MediaSession: 收到停止命令")
+                        Log.d(TAG, "⏹️ MediaSession: 收到停止命令")
                         handleMediaControl("stop")
                     }
                     
                     override fun onSkipToNext() {
                         super.onSkipToNext()
-                        println("⏭️ MediaSession: 收到下一曲命令")
+                        Log.d(TAG, "⏭️ MediaSession: 收到下一曲命令")
                         handleMediaControl("next")
                     }
                     
                     override fun onSkipToPrevious() {
                         super.onSkipToPrevious()
-                        println("⏮️ MediaSession: 收到上一曲命令")
+                        Log.d(TAG, "⏮️ MediaSession: 收到上一曲命令")
                         handleMediaControl("previous")
                     }
                 })
@@ -211,6 +226,108 @@ class BackgroundPlayerService : Service() {
             println("❌ MediaSessionCompat 初始化失败: ${e.message}")
         }
     }
+    
+    /**
+     * ✅ 请求音频焦点
+     */
+    private fun requestAudioFocus(): Boolean {
+        return try {
+            if (hasAudioFocus) {
+                Log.d(TAG, "✅ 已经拥有音频焦点")
+                return true
+            }
+            
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                // Android 8.0+ 使用 AudioFocusRequest
+                val audioAttributes = AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build()
+                
+                audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                    .setAudioAttributes(audioAttributes)
+                    .setOnAudioFocusChangeListener { focusChange ->
+                        handleAudioFocusChange(focusChange)
+                    }
+                    .build()
+                
+                val result = audioManager?.requestAudioFocus(audioFocusRequest!!)
+                hasAudioFocus = (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
+                Log.d(TAG, "🎯 请求音频焦点结果: ${if (hasAudioFocus) "成功" else "失败"}")
+            } else {
+                // Android 8.0 以下使用旧API
+                @Suppress("DEPRECATION")
+                val result = audioManager?.requestAudioFocus(
+                    { focusChange -> handleAudioFocusChange(focusChange) },
+                    AudioManager.STREAM_MUSIC,
+                    AudioManager.AUDIOFOCUS_GAIN
+                )
+                hasAudioFocus = (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
+                Log.d(TAG, "🎯 请求音频焦点结果(旧API): ${if (hasAudioFocus) "成功" else "失败"}")
+            }
+            
+            hasAudioFocus
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ 请求音频焦点失败: ${e.message}")
+            false
+        }
+    }
+    
+    /**
+     * ✅ 放弃音频焦点
+     */
+    private fun abandonAudioFocus() {
+        try {
+            if (!hasAudioFocus) {
+                Log.d(TAG, "ℹ️ 没有音频焦点可放弃")
+                return
+            }
+            
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                audioFocusRequest?.let {
+                    audioManager?.abandonAudioFocusRequest(it)
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                audioManager?.abandonAudioFocus(null)
+            }
+            
+            hasAudioFocus = false
+            Log.d(TAG, "🔇 已放弃音频焦点")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ 放弃音频焦点失败: ${e.message}")
+        }
+    }
+    
+    /**
+     * ✅ 处理音频焦点变化
+     */
+    private fun handleAudioFocusChange(focusChange: Int) {
+        when (focusChange) {
+            AudioManager.AUDIOFOCUS_GAIN -> {
+                // ✅ 重新获得音频焦点（例如电话结束）
+                Log.d(TAG, "🎯 重新获得音频焦点")
+                // 注意：这里不自动恢复播放，需要用户手动操作
+            }
+            AudioManager.AUDIOFOCUS_LOSS -> {
+                // ✅ 永久失去音频焦点（例如其他应用开始播放音乐）
+                Log.d(TAG, "🎯 永久失去音频焦点，发送暂停命令")
+                hasAudioFocus = false
+                handleMediaControl("pause")
+            }
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                // ✅ 暂时失去音频焦点（例如来电）
+                Log.d(TAG, "🎯 暂时失去音频焦点，发送暂停命令")
+                handleMediaControl("pause")
+            }
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                // ✅ 暂时失去音频焦点但可以降低音量（例如导航提示）
+                Log.d(TAG, "🎯 暂时失去音频焦点(可降低音量)")
+                // 可以选择降低音量或暂停，这里选择暂停以确保不打扰用户
+                handleMediaControl("pause")
+            }
+        }
+    }
 
     /**
      * ✅ 处理媒体控制命令（通过 MethodChannel 转发到 Flutter 层）
@@ -218,6 +335,17 @@ class BackgroundPlayerService : Service() {
     private fun handleMediaControl(action: String) {
         try {
             Log.d(TAG, "📡 准备发送媒体控制命令到Flutter: $action")
+            
+            // ✅ 关键修复：在播放前请求音频焦点
+            if (action == "play") {
+                if (!requestAudioFocus()) {
+                    Log.w(TAG, "⚠️ 无法获取音频焦点，取消播放命令")
+                    return
+                }
+            } else if (action == "pause" || action == "stop") {
+                // 暂停或停止时放弃音频焦点
+                abandonAudioFocus()
+            }
             
             // ✅ 通过广播发送媒体控制命令
             val intent = Intent("com.audioplayer.ssh_audio_player.MEDIA_CONTROL").apply {
