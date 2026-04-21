@@ -35,6 +35,8 @@ class BackgroundPlayerService : Service() {
         private const val TAG = "BackgroundPlayerService"
         // ✅ SSH监控定时器间隔（30秒）
         private const val SSH_CHECK_INTERVAL_MS = 30_000L
+        // ✅ 媒体控制防抖间隔（增加到 1000ms，避免车机按键快速连续触发）
+        private const val MEDIA_CONTROL_DEBOUNCE_MS = 1000L
     }
 
     private lateinit var wakeLock: PowerManager.WakeLock
@@ -66,6 +68,9 @@ class BackgroundPlayerService : Service() {
     private var audioManager: AudioManager? = null
     private var audioFocusRequest: AudioFocusRequest? = null
     private var hasAudioFocus: Boolean = false
+    
+    // ✅ 媒体控制防抖：记录上次处理时间，避免车机按键重复触发
+    private var lastMediaControlTime: Long = 0
 
     override fun onCreate() {
         super.onCreate()
@@ -195,6 +200,12 @@ class BackgroundPlayerService : Service() {
                         // 
                         // 正确做法：在handleMediaControl中统一处理音频焦点请求
                         
+                        // ✅ 防抖检查：避免车机按键快速连续触发
+                        if (shouldDebounceMediaControl()) {
+                            Log.w(TAG, "⚠️ MediaSession onPlay() 被防抖拦截（重复触发）")
+                            return
+                        }
+                        
                         // ✅ 明确发送 play 命令，不使用 toggle
                         handleMediaControl("play")
                     }
@@ -202,25 +213,53 @@ class BackgroundPlayerService : Service() {
                     override fun onPause() {
                         super.onPause()
                         Log.d(TAG, "⏸️ MediaSession: 收到暂停命令")
-                        // ✅ 关键修复：明确发送 pause 命令，不使用 toggle
+                        
+                        // ✅ 防抖检查：避免车机按键快速连续触发
+                        if (shouldDebounceMediaControl()) {
+                            Log.w(TAG, "⚠️ MediaSession onPause() 被防抖拦截（重复触发）")
+                            return
+                        }
+                        
+                        // ✅ 明确发送 pause 命令，不使用 toggle
                         handleMediaControl("pause")
                     }
                     
                     override fun onStop() {
                         super.onStop()
                         Log.d(TAG, "⏹️ MediaSession: 收到停止命令")
+                        
+                        // ✅ 防抖检查
+                        if (shouldDebounceMediaControl()) {
+                            Log.w(TAG, "⚠️ MediaSession onStop() 被防抖拦截（重复触发）")
+                            return
+                        }
+                        
                         handleMediaControl("stop")
                     }
                     
                     override fun onSkipToNext() {
                         super.onSkipToNext()
                         Log.d(TAG, "⏭️ MediaSession: 收到下一曲命令")
+                        
+                        // ✅ 防抖检查
+                        if (shouldDebounceMediaControl()) {
+                            Log.w(TAG, "⚠️ MediaSession onSkipToNext() 被防抖拦截（重复触发）")
+                            return
+                        }
+                        
                         handleMediaControl("next")
                     }
                     
                     override fun onSkipToPrevious() {
                         super.onSkipToPrevious()
                         Log.d(TAG, "⏮️ MediaSession: 收到上一曲命令")
+                        
+                        // ✅ 防抖检查
+                        if (shouldDebounceMediaControl()) {
+                            Log.w(TAG, "⚠️ MediaSession onSkipToPrevious() 被防抖拦截（重复触发）")
+                            return
+                        }
+                        
                         handleMediaControl("previous")
                     }
                 })
@@ -364,6 +403,11 @@ class BackgroundPlayerService : Service() {
                 abandonAudioFocus()
             }
             
+            // ✅ 更新防抖时间戳
+            val oldTime = lastMediaControlTime
+            lastMediaControlTime = System.currentTimeMillis()
+            Log.d(TAG, "🕒 更新防抖时间戳: $oldTime -> $lastMediaControlTime")
+            
             // ✅ 通过广播发送媒体控制命令
             val intent = Intent("com.audioplayer.ssh_audio_player.MEDIA_CONTROL").apply {
                 putExtra("action", action)
@@ -375,6 +419,23 @@ class BackgroundPlayerService : Service() {
         } catch (e: Exception) {
             Log.e(TAG, "❌ 发送媒体控制命令失败: ${e.message}")
         }
+    }
+    
+    /**
+     * ✅ 检查是否应该防抖媒体控制命令
+     * @return true 表示应该拦截（重复触发），false 表示可以执行
+     */
+    private fun shouldDebounceMediaControl(): Boolean {
+        val currentTime = System.currentTimeMillis()
+        val timeSinceLastControl = currentTime - lastMediaControlTime
+        
+        if (timeSinceLastControl < MEDIA_CONTROL_DEBOUNCE_MS) {
+            Log.d(TAG, "⏱️ 媒体控制防抖: 距离上次触发仅 ${timeSinceLastControl}ms (阈值: ${MEDIA_CONTROL_DEBOUNCE_MS}ms) - 拦截")
+            return true
+        }
+        
+        Log.d(TAG, "✅ 媒体控制防抖检查通过: 距离上次触发 ${timeSinceLastControl}ms (阈值: ${MEDIA_CONTROL_DEBOUNCE_MS}ms)")
+        return false
     }
 
     /**

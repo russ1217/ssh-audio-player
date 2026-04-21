@@ -53,6 +53,10 @@ void _initializeSshCheckChannel() {
   debugPrint('✅ SSH检查MethodChannel已注册');
 }
 
+/// ✅ 媒体控制防抖：记录上次处理时间，避免车机按键快速连续触发
+DateTime? _lastMediaControlTime;
+const _mediaControlDebounceMs = 1000; // 1秒防抖间隔
+
 /// ✅ 初始化媒体控制监听器
 void _initializeMediaControlListener() {
   MediaSessionService.initializeMediaControlListener();
@@ -61,6 +65,18 @@ void _initializeMediaControlListener() {
   MediaSessionService.onMediaControl = (action, {bool isSystemForced = false}) {
     debugPrint('🎮 处理媒体控制命令: $action (isSystemForced=$isSystemForced)');
     debugPrint('🔍 全局AppProvider: ${_globalAppProvider != null ? "有效" : "null"}');
+    
+    // ✅ Flutter 层防抖检查
+    final now = DateTime.now();
+    if (_lastMediaControlTime != null) {
+      final timeSinceLastControl = now.difference(_lastMediaControlTime!).inMilliseconds;
+      if (timeSinceLastControl < _mediaControlDebounceMs) {
+        debugPrint('⏱️ [Flutter] 媒体控制防抖: 距离上次触发仅 ${timeSinceLastControl}ms (阈值: ${_mediaControlDebounceMs}ms) - 拦截 $action 命令');
+        return;
+      }
+      debugPrint('✅ [Flutter] 媒体控制防抖检查通过: 距离上次触发 ${timeSinceLastControl}ms (阈值: ${_mediaControlDebounceMs}ms)');
+    }
+    _lastMediaControlTime = now;
     
     if (_globalAppProvider != null) {
       try {

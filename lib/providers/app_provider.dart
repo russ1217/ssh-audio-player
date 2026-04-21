@@ -315,21 +315,25 @@ class AppProvider extends ChangeNotifier {
 
   void _setupAudioPlayerListeners() {
     _audioPlayerService.playbackStateStream.listen((state) {
-      // ✅ 最简单直接的方案：监听器根据实际播放器状态更新 _isPlaying
-      // 不要有任何复杂的判断逻辑，相信底层播放器的状态
+      // ✅ 关键修复：根据实际播放器状态同步 _isPlaying
+      // 但要避免与用户操作产生竞争，只在以下情况更新：
+      // 1. 播放器真正开始播放（playing状态）
+      // 2. 播放器完成或停止（completed/idle状态）
+      // 3. 其他状态（paused/buffering/loading）不改变 _isPlaying
+      
       final wasPlaying = _isPlaying;
       
       if (state == PlayerState.playing) {
+        // 播放器真正开始播放
         _isPlaying = true;
-      } else if (state == PlayerState.paused || state == PlayerState.completed || state == PlayerState.idle) {
+        debugPrint('📊 播放器状态变化（开始播放）: $state, isPlaying: $wasPlaying → $_isPlaying');
+      } else if (state == PlayerState.completed || state == PlayerState.idle) {
+        // 播放完成或停止
         _isPlaying = false;
-      }
-      // loading/buffering 状态不改变 _isPlaying
-      
-      if (wasPlaying != _isPlaying) {
-        debugPrint('📊 播放器状态变化: $state, isPlaying: $wasPlaying → $_isPlaying');
+        debugPrint('📊 播放器状态变化（完成/停止）: $state, isPlaying: $wasPlaying → $_isPlaying');
       } else {
-        debugPrint('📊 播放器状态: $state, isPlaying: $_isPlaying (无变化)');
+        // paused/buffering/loading 状态不改变 _isPlaying
+        debugPrint('📊 播放器状态（保持_isPlaying不变）: $state, isPlaying: $_isPlaying');
       }
       
       _lastPositionForStateCheck = _audioPlayerService.currentPosition;
@@ -360,15 +364,19 @@ class AppProvider extends ChangeNotifier {
       _currentIndex = index;
       notifyListeners();
     });
-
-    _audioPlayerService.completeStream.listen((_) {
-      _onFileComplete();
-    });
   }
 
   void _setupTimerListeners() {
+    _timerService.countdownUpdateStream.listen((_) {
+      _updateMediaSessionPosition();
+    });
+
     _timerService.timerCompleteStream.listen((type) {
       _onTimerComplete(type);
+    });
+    
+    _audioPlayerService.completeStream.listen((_) {
+      _onFileComplete();
     });
   }
 
@@ -1010,7 +1018,35 @@ class AppProvider extends ChangeNotifier {
         // ✅ 更新 MediaSession 播放状态为暂停
         _updateMediaSessionPlaybackState(isPlaying: false);
       } else {
-        await _audioPlayerService.play();
+        // ✅ 关键修复：SSH 音频需要重新启动流式服务
+        if (_currentPlayingFile != null && !_isLocalMode) {
+          debugPrint('🔄 SSH 音频恢复播放，重新启动流式服务...');
+          
+          // 检查 SSH 连接是否有效
+          final sshConnected = await _ensureSSHConnection();
+          if (!sshConnected) {
+            debugPrint('❌ SSH 连接失败，无法恢复播放');
+            return;
+          }
+          
+          // 重新启动流式服务
+          final file = _currentPlayingFile!;
+          debugPrint('🌐 重新启动 HTTP 流式服务...');
+          await _playMediaStreaming(file);
+          
+          // 恢复播放进度（如果有保存的进度）
+          if (_playbackPositionBeforeDisconnect != null && _playbackPositionBeforeDisconnect! > Duration.zero) {
+            await Future.delayed(const Duration(milliseconds: 500));
+            await _audioPlayerService.seek(_playbackPositionBeforeDisconnect!);
+            debugPrint('⏩ 恢复到进度: $_playbackPositionBeforeDisconnect');
+            _playbackPositionBeforeDisconnect = null; // 清除保存的进度
+          }
+        } else {
+          // 本地音频直接播放
+          debugPrint('▶️ 本地音频恢复播放');
+          await _audioPlayerService.play();
+        }
+        
         _isPlaying = true;
         // ✅ 用户主动播放，清除标志
         _userManuallyPaused = false;
@@ -1021,6 +1057,7 @@ class AppProvider extends ChangeNotifier {
       }
       notifyListeners();
     } catch (e) {
+      debugPrint('❌ togglePlayPause 失败: $e');
       rethrow;
     }
   }
