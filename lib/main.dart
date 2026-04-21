@@ -69,6 +69,7 @@ void _initializeMediaControlListener() {
         switch (action) {
           case 'play':
           case 'pause':
+          case 'toggle_play_pause':  // ✅ 新增：支持车机统一的 toggle 命令
             debugPrint('▶️/⏸️ 执行播放/暂停切换命令');
             _globalAppProvider!.togglePlayPause();
             break;

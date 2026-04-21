@@ -171,13 +171,15 @@ class BackgroundPlayerService : Service() {
                     override fun onPlay() {
                         super.onPlay()
                         println("▶️ MediaSession: 收到播放命令")
-                        handleMediaControl("play")
+                        // ✅ 关键修复：车机的 play/pause 是同一个键，统一使用 toggle 逻辑
+                        handleMediaControl("toggle_play_pause")
                     }
                     
                     override fun onPause() {
                         super.onPause()
                         println("⏸️ MediaSession: 收到暂停命令")
-                        handleMediaControl("pause")
+                        // ✅ 关键修复：车机的 play/pause 是同一个键，统一使用 toggle 逻辑
+                        handleMediaControl("toggle_play_pause")
                     }
                     
                     override fun onStop() {
