@@ -58,8 +58,8 @@ void _initializeMediaControlListener() {
   MediaSessionService.initializeMediaControlListener();
   
   // 设置回调函数，处理媒体控制命令
-  MediaSessionService.onMediaControl = (action) {
-    debugPrint('🎮 处理媒体控制命令: $action');
+  MediaSessionService.onMediaControl = (action, {bool isSystemForced = false}) {
+    debugPrint('🎮 处理媒体控制命令: $action (isSystemForced=$isSystemForced)');
     debugPrint('🔍 全局AppProvider: ${_globalAppProvider != null ? "有效" : "null"}');
     
     if (_globalAppProvider != null) {
@@ -70,19 +70,34 @@ void _initializeMediaControlListener() {
           case 'play':
             // ✅ 关键修复：play 命令应该明确执行播放操作
             debugPrint('▶️ 执行播放命令');
-            if (!_globalAppProvider!.isPlaying) {
+            debugPrint('🔍 当前状态: isPlaying=${_globalAppProvider!.isPlaying}, hasCurrentFile=${_globalAppProvider!.currentPlayingFile != null}');
+            
+            // ✅ 严格检查：只有在未播放且有文件时才执行播放
+            if (!_globalAppProvider!.isPlaying && _globalAppProvider!.currentPlayingFile != null) {
+              debugPrint('✅ 满足播放条件，执行播放');
               _globalAppProvider!.togglePlayPause();
-            } else {
+            } else if (_globalAppProvider!.isPlaying) {
               debugPrint('⚠️ 已经在播放中，忽略 play 命令');
+            } else {
+              debugPrint('⚠️ 没有正在播放的文件，忽略 play 命令（可能是误触发）');
             }
             break;
           case 'pause':
-            // ✅ 关键修复：pause 命令应该明确执行暂停操作
-            debugPrint('⏸️ 执行暂停命令');
-            if (_globalAppProvider!.isPlaying) {
-              _globalAppProvider!.togglePlayPause();
+            // ✅ 关键修复：区分用户主动暂停和系统强制暂停
+            if (isSystemForced) {
+              debugPrint('⏸️ 执行系统强制暂停命令');
+              if (_globalAppProvider!.isPlaying) {
+                _globalAppProvider!.pauseBySystem();
+              } else {
+                debugPrint('⚠️ 已经暂停，忽略 pause 命令');
+              }
             } else {
-              debugPrint('⚠️ 已经暂停，忽略 pause 命令');
+              debugPrint('⏸️ 执行用户主动暂停命令');
+              if (_globalAppProvider!.isPlaying) {
+                _globalAppProvider!.togglePlayPause();
+              } else {
+                debugPrint('⚠️ 已经暂停，忽略 pause 命令');
+              }
             }
             break;
           case 'toggle_play_pause':

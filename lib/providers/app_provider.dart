@@ -152,9 +152,16 @@ class AppProvider extends ChangeNotifier {
         
         // 如果需要恢复播放
         if (_shouldResumeAfterReconnect && _currentPlayingFile != null) {
-          debugPrint('🔄 网络恢复，准备恢复播放...');
-          await Future.delayed(const Duration(milliseconds: 500));
-          await _resumePlaybackAfterReconnect();
+          // ✅ 关键修复：如果用户主动暂停，不要自动恢复播放
+          if (_userManuallyPaused) {
+            debugPrint('⚠️ 用户已主动暂停，网络恢复后不自动恢复播放');
+            _shouldResumeAfterReconnect = false;
+            _userManuallyPaused = false;
+          } else {
+            debugPrint('🔄 网络恢复，准备恢复播放...');
+            await Future.delayed(const Duration(milliseconds: 500));
+            await _resumePlaybackAfterReconnect();
+          }
         }
       } else {
         debugPrint('⚠️ SSH重连失败或无配置，将由心跳检测继续重试');
@@ -223,6 +230,7 @@ class AppProvider extends ChangeNotifier {
   bool _shouldResumeAfterReconnect = false;
   Duration? _playbackPositionBeforeDisconnect;
   bool _isAutoResuming = false; // 防抖标志
+  bool _userManuallyPaused = false; // ✅ 新增：标记用户是否主动暂停（与音频焦点丢失/网络断开区分）
 
   /// SSH 断开时保存播放状态
   Future<void> _autoResumePlayback() async {
@@ -234,7 +242,8 @@ class AppProvider extends ChangeNotifier {
     _isAutoResuming = true;
     _shouldResumeAfterReconnect = true;
     _playbackPositionBeforeDisconnect = _audioPlayerService.currentPosition;
-    debugPrint('💾 保存播放进度: ${_playbackPositionBeforeDisconnect}');
+    _userManuallyPaused = false;
+    debugPrint('💾 保存播放进度: ${_playbackPositionBeforeDisconnect}（非用户主动暂停）');
     
     // 停止当前播放（因为 SSH 已断开，流式服务无法工作）
     try {
@@ -288,12 +297,14 @@ class AppProvider extends ChangeNotifier {
       _shouldResumeAfterReconnect = false;
       _playbackPositionBeforeDisconnect = null;
       _isAutoResuming = false;
+      // ✅ 恢复播放成功后，清除用户主动暂停标志
+      _userManuallyPaused = false;
       _isPlaying = true;
       
       // ✅ 更新 MediaSession 播放状态为播放中
       _updateMediaSessionPlaybackState(isPlaying: true);
       
-      debugPrint('✅ 播放已恢复');
+      debugPrint('✅ 播放已恢复（_userManuallyPaused = false）');
     } catch (e) {
       debugPrint('❌ 恢复播放失败: $e');
       _shouldResumeAfterReconnect = false;
@@ -992,14 +1003,18 @@ class AppProvider extends ChangeNotifier {
       if (_isPlaying) {
         await _audioPlayerService.pause();
         _isPlaying = false;
-        debugPrint('⏸️ 已调用 pause()，_isPlaying = false');
+        // ✅ 关键修复：用户主动暂停，设置标志
+        _userManuallyPaused = true;
+        debugPrint('⏸️ 用户主动暂停，_isPlaying = false, _userManuallyPaused = true');
         
         // ✅ 更新 MediaSession 播放状态为暂停
         _updateMediaSessionPlaybackState(isPlaying: false);
       } else {
         await _audioPlayerService.play();
         _isPlaying = true;
-        debugPrint('▶️ 已调用 play()，_isPlaying = true');
+        // ✅ 用户主动播放，清除标志
+        _userManuallyPaused = false;
+        debugPrint('▶️ 用户主动播放，_isPlaying = true, _userManuallyPaused = false');
         
         // ✅ 更新 MediaSession 播放状态为播放中
         _updateMediaSessionPlaybackState(isPlaying: true);
@@ -1037,6 +1052,24 @@ class AppProvider extends ChangeNotifier {
 
   Future<void> seekTo(Duration position) async {
     await _audioPlayerService.seek(position);
+  }
+
+  /// ✅ 系统强制暂停（不设置用户主动暂停标志）
+  /// 用于音频焦点丢失、电话等场景
+  Future<void> pauseBySystem() async {
+    try {
+      if (_isPlaying) {
+        await _audioPlayerService.pause();
+        _isPlaying = false;
+        // ✅ 关键修复：系统强制暂停，不设置_userManuallyPaused
+        debugPrint('⏸️ 系统强制暂停，_isPlaying = false, _userManuallyPaused 保持不变($_userManuallyPaused)');
+        
+        // ✅ 更新 MediaSession 播放状态为暂停
+        _updateMediaSessionPlaybackState(isPlaying: false);
+      }
+    } catch (e) {
+      debugPrint('❌ 系统强制暂停失败: $e');
+    }
   }
 
   Future<void> seekForward(Duration duration) async {

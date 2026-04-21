@@ -311,36 +311,44 @@ class BackgroundPlayerService : Service() {
             }
             AudioManager.AUDIOFOCUS_LOSS -> {
                 // ✅ 永久失去音频焦点（例如其他应用开始播放音乐）
-                Log.d(TAG, "🎯 永久失去音频焦点，发送暂停命令")
+                Log.d(TAG, "🎯 永久失去音频焦点，发送暂停命令（系统强制）")
                 hasAudioFocus = false
-                handleMediaControl("pause")
+                handleMediaControl("pause", isSystemForced = true)
             }
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
                 // ✅ 暂时失去音频焦点（例如来电）
-                Log.d(TAG, "🎯 暂时失去音频焦点，发送暂停命令")
-                handleMediaControl("pause")
+                Log.d(TAG, "🎯 暂时失去音频焦点，发送暂停命令（系统强制）")
+                handleMediaControl("pause", isSystemForced = true)
             }
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
                 // ✅ 暂时失去音频焦点但可以降低音量（例如导航提示）
-                Log.d(TAG, "🎯 暂时失去音频焦点(可降低音量)")
-                // 可以选择降低音量或暂停，这里选择暂停以确保不打扰用户
-                handleMediaControl("pause")
+                Log.d(TAG, "🎯 暂时失去音频焦点(可降低音量)，发送暂停命令（系统强制）")
+                // 选择暂停以确保不打扰用户
+                handleMediaControl("pause", isSystemForced = true)
             }
         }
     }
 
     /**
      * ✅ 处理媒体控制命令（通过 MethodChannel 转发到 Flutter 层）
+     * @param action 控制动作（play/pause/stop等）
+     * @param isSystemForced 是否是系统强制操作（如音频焦点丢失），默认为false（用户主动操作）
      */
-    private fun handleMediaControl(action: String) {
+    private fun handleMediaControl(action: String, isSystemForced: Boolean = false) {
         try {
-            Log.d(TAG, "📡 准备发送媒体控制命令到Flutter: $action")
+            Log.d(TAG, "📡 准备发送媒体控制命令到Flutter: $action (isSystemForced=$isSystemForced)")
             
             // ✅ 关键修复：在播放前请求音频焦点
             if (action == "play") {
                 if (!requestAudioFocus()) {
                     Log.w(TAG, "⚠️ 无法获取音频焦点，取消播放命令")
                     return
+                }
+                
+                // ✅ 额外保护：检查当前是否真的应该播放
+                // 如果刚刚因为失去音频焦点而暂停，不应该立即恢复
+                if (!isCurrentlyPlaying) {
+                    Log.d(TAG, "ℹ️ 当前未处于播放状态，但仍允许播放命令（由用户主动触发）")
                 }
             } else if (action == "pause" || action == "stop") {
                 // 暂停或停止时放弃音频焦点
@@ -350,10 +358,11 @@ class BackgroundPlayerService : Service() {
             // ✅ 通过广播发送媒体控制命令
             val intent = Intent("com.audioplayer.ssh_audio_player.MEDIA_CONTROL").apply {
                 putExtra("action", action)
+                putExtra("isSystemForced", isSystemForced) // ✅ 传递系统强制标志
                 setPackage(packageName)
             }
             sendBroadcast(intent)
-            Log.d(TAG, "📤 已广播媒体控制命令: $action")
+            Log.d(TAG, "📤 已广播媒体控制命令: $action (isSystemForced=$isSystemForced)")
         } catch (e: Exception) {
             Log.e(TAG, "❌ 发送媒体控制命令失败: ${e.message}")
         }

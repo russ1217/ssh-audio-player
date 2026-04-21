@@ -27,8 +27,8 @@ class BackgroundService {
 class MediaSessionService {
   static const MethodChannel _channel = MethodChannel('com.example.player/media_session');
   
-  // ✅ 媒体控制回调
-  static Function(String action)? onMediaControl;
+  // ✅ 媒体控制回调（新增isSystemForced参数）
+  static Function(String action, {bool isSystemForced})? onMediaControl;
 
   /// 播放状态常量（对应 Android PlaybackState）
   static const int STATE_NONE = 0;
@@ -47,10 +47,11 @@ class MediaSessionService {
     controlChannel.setMethodCallHandler((call) async {
       if (call.method == 'onMediaControl') {
         final action = call.arguments['action'] as String?;
-        debugPrint('📱 Flutter 收到媒体控制命令: $action');
+        final isSystemForced = call.arguments['isSystemForced'] as bool? ?? false;
+        debugPrint('📱 Flutter 收到媒体控制命令: $action (isSystemForced=$isSystemForced)');
         
         if (action != null && onMediaControl != null) {
-          onMediaControl!(action);
+          onMediaControl!(action, isSystemForced: isSystemForced);
         }
       }
     });
