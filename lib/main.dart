@@ -68,8 +68,25 @@ void _initializeMediaControlListener() {
         
         switch (action) {
           case 'play':
+            // ✅ 关键修复：play 命令应该明确执行播放操作
+            debugPrint('▶️ 执行播放命令');
+            if (!_globalAppProvider!.isPlaying) {
+              _globalAppProvider!.togglePlayPause();
+            } else {
+              debugPrint('⚠️ 已经在播放中，忽略 play 命令');
+            }
+            break;
           case 'pause':
-          case 'toggle_play_pause':  // ✅ 新增：支持车机统一的 toggle 命令
+            // ✅ 关键修复：pause 命令应该明确执行暂停操作
+            debugPrint('⏸️ 执行暂停命令');
+            if (_globalAppProvider!.isPlaying) {
+              _globalAppProvider!.togglePlayPause();
+            } else {
+              debugPrint('⚠️ 已经暂停，忽略 pause 命令');
+            }
+            break;
+          case 'toggle_play_pause':
+            // ✅ toggle_play_pause 用于通知栏按钮等场景，直接切换状态
             debugPrint('▶️/⏸️ 执行播放/暂停切换命令');
             _globalAppProvider!.togglePlayPause();
             break;
