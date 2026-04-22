@@ -285,54 +285,45 @@ class AppProvider extends ChangeNotifier {
       // ✅ 关键修复：统一使用流式播放，不再区分文件大小
       debugPrint('🌐 重新启动流式服务...');
       await _playMediaStreaming(file);
-
-      // 恢复播放进度
-      if (_playbackPositionBeforeDisconnect != null && _playbackPositionBeforeDisconnect! > Duration.zero) {
-        // 等待播放器加载完成
-        await Future.delayed(const Duration(milliseconds: 500));
-        await _audioPlayerService.seek(_playbackPositionBeforeDisconnect!);
-        debugPrint('⏩ 恢复到进度: $_playbackPositionBeforeDisconnect');
-      }
-
+    } catch (e) {
+      debugPrint('⚠️ 恢复播放异常: $e');
+      _isAutoResuming = false;
       _shouldResumeAfterReconnect = false;
       _playbackPositionBeforeDisconnect = null;
-      _isAutoResuming = false;
-      // ✅ 恢复播放成功后，清除用户主动暂停标志
-      _userManuallyPaused = false;
-      _isPlaying = true;
-      
-      // ✅ 更新 MediaSession 播放状态为播放中
-      _updateMediaSessionPlaybackState(isPlaying: true);
-      
-      debugPrint('✅ 播放已恢复（_userManuallyPaused = false）');
-    } catch (e) {
-      debugPrint('❌ 恢复播放失败: $e');
-      _isAutoResuming = false;
+      debugPrint('🔄 恢复播放失败，清除所有恢复标志');
     }
   }
-  
+
   /// 停止播放
   Future<void> stopPlayback() async {
+    debugPrint('🛑 开始停止播放...');
+    
     await _audioPlayerService.stop();
     await _streamingService.stop();
-    _stopPredownloading();
-  
+    
     _isPlaying = false;
     _currentPlayingFile = null;
-  
+    _stopPredownloading();
+    
     // ✅ 关键修复：停止播放时清除所有恢复标志
     _userManuallyPaused = false;
     _shouldResumeAfterReconnect = false;
     _playbackPositionBeforeDisconnect = null;
     debugPrint('🛑 停止播放，清除所有恢复标志');
-  
+    
     // ✅ 更新 MediaSession 播放状态为停止
+    _updateMediaSessionPlaybackState(isPlaying: false);
+    
+    // ✅ 关键修复：停止后台前台服务，防止杀掉app后继续播放
+    try {
+      await BackgroundService.stop();
+      debugPrint('🛑 后台服务已停止');
     } catch (e) {
-      debugPrint('❌ 恢复播放失败: $e');
-      _shouldResumeAfterReconnect = false;
-      _isAutoResuming = false;
-      rethrow;
+      debugPrint('⚠️ 停止后台服务失败: $e');
     }
+    
+    notifyListeners();
+    debugPrint('✅ 停止播放完成');
   }
 
   void _setupAudioPlayerListeners() {
@@ -350,6 +341,23 @@ class AppProvider extends ChangeNotifier {
         _isPlaying = true;
         debugPrint('📊 播放器状态变化（开始播放）: $state, isPlaying: $wasPlaying → $_isPlaying');
       } else if (state == PlayerState.completed || state == PlayerState.idle) {
+        // 播放完成或停止
+        _isPlaying = false;
+        debugPrint('📊 播放器状态变化（完成/停止）: $state, isPlaying: $wasPlaying → $_isPlaying');
+      } else {
+        // paused/buffering/loading 状态不改变 _isPlaying
+        debugPrint('📊 播放器状态（保持_isPlaying不变）: $state, isPlaying: $_isPlaying');
+      }
+      
+      _lastPositionForStateCheck = _audioPlayerService.currentPosition;
+      
+      // ✅ 更新 MediaSession 播放状态
+      _updateMediaSessionPlaybackState(isPlaying: _isPlaying);
+      
+      notifyListeners();
+    });
+
+    _audioPlayerService.positionStream.listen((position) {
         // 播放完成或停止
         _isPlaying = false;
         debugPrint('📊 播放器状态变化（完成/停止）: $state, isPlaying: $wasPlaying → $_isPlaying');
@@ -1091,33 +1099,10 @@ class AppProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> stopPlayback() async {
-    debugPrint('🛑 开始停止播放...');
-    
-    await _audioPlayerService.stop();
-    await _streamingService.stop();
-    
-    _isPlaying = false;
-    _currentPlayingFile = null;
-    _stopPredownloading();
-    
-    // ✅ 更新 MediaSession 播放状态为停止
-    _updateMediaSessionPlaybackState(isPlaying: false);
-    
-    // ✅ 关键修复：停止后台前台服务，防止杀掉app后继续播放
-    try {
-      await BackgroundService.stop();
-      debugPrint('🛑 后台服务已停止');
-    } catch (e) {
-      debugPrint('⚠️ 停止后台服务失败: $e');
-    }
-    
-    notifyListeners();
-    debugPrint('✅ 停止播放完成');
-  }
-
   Future<void> seekTo(Duration position) async {
     await _audioPlayerService.seek(position);
+    _position = position;
+    notifyListeners();
   }
 
   /// ✅ 系统强制暂停（不设置用户主动暂停标志）
