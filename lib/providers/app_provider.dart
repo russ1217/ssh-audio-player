@@ -146,22 +146,22 @@ class AppProvider extends ChangeNotifier {
       final success = await _sshService.checkAndReconnectIfNeeded();
       
       if (success) {
-        debugPrint('✅ SSH 连接已恢复');
-        // SSH 重连成功后，如果之前正在播放，自动恢复播放
-        if (_shouldResumeAfterReconnect) {
+        debugPrint('✅ SSH连接正常或重连成功');
+        _isSSHConnected = true;
+        notifyListeners();
+        
+        // 如果需要恢复播放
+        if (_shouldResumeAfterReconnect && _currentPlayingFile != null) {
           // ✅ 关键修复：如果用户主动暂停，不要自动恢复播放
           if (_userManuallyPaused) {
-            debugPrint('⚠️ 用户已主动暂停，SSH恢复后不自动恢复播放');
+            debugPrint('⚠️ 用户已主动暂停，网络恢复后不自动恢复播放，保留暂停状态');
             _shouldResumeAfterReconnect = false;
-            // ✅ 不清除 _userManuallyPaused，保留用户的暂停意图
+            // ✅ 关键修复：不清除 _userManuallyPaused，保留用户的暂停意图
           } else {
-            debugPrint('🔄 心跳检测：SSH 已恢复，自动恢复播放...');
-            _resumePlaybackAfterReconnect();
+            debugPrint('🔄 网络恢复，准备恢复播放...');
+            await Future.delayed(const Duration(milliseconds: 500));
+            await _resumePlaybackAfterReconnect();
           }
-        }
-      } else {
-        debugPrint('❌ SSH 连接已断开');
-      }
         }
       } else {
         debugPrint('⚠️ SSH重连失败或无配置，将由心跳检测继续重试');
