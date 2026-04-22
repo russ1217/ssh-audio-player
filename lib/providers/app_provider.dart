@@ -1050,6 +1050,10 @@ class AppProvider extends ChangeNotifier {
         // ✅ 更新 MediaSession 播放状态为暂停
         _updateMediaSessionPlaybackState(isPlaying: false);
       } else {
+        // ✅ 关键修复：用户主动播放，立即清除暂停标志（在任何播放操作之前）
+        _userManuallyPaused = false;
+        debugPrint('▶️ 用户主动播放，清除 _userManuallyPaused 标志');
+        
         // ✅ 关键修复：区分本地文件和流式文件的恢复逻辑
         if (_currentPlayingFile != null && !_isLocalMode) {
           // SSH 流式文件：直接恢复播放，不重新启动流式服务
@@ -1080,12 +1084,7 @@ class AppProvider extends ChangeNotifier {
         }
         
         _isPlaying = true;
-        // ✅ 用户主动播放，清除标志
-        _userManuallyPaused = false;
-        debugPrint('▶️ 用户主动播放，_isPlaying = true, _userManuallyPaused = false');
-        
-        // ✅ 更新 MediaSession 播放状态为播放中
-        _updateMediaSessionPlaybackState(isPlaying: true);
+        debugPrint('▶️ 用户主动播放，_isPlaying = true');
       }
       notifyListeners();
     } catch (e) {
