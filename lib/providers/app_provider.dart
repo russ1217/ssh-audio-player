@@ -154,9 +154,10 @@ class AppProvider extends ChangeNotifier {
         if (_shouldResumeAfterReconnect && _currentPlayingFile != null) {
           // ✅ 关键修复：如果用户主动暂停，不要自动恢复播放
           if (_userManuallyPaused) {
-            debugPrint('⚠️ 用户已主动暂停，网络恢复后不自动恢复播放');
+            debugPrint('⚠️ 用户已主动暂停，网络恢复后不自动恢复播放，保留暂停状态');
             _shouldResumeAfterReconnect = false;
-            _userManuallyPaused = false;
+            // ✅ 关键修复：不清除 _userManuallyPaused，保留用户的暂停意图
+            // 只有当用户再次点击播放按钮时才清除
           } else {
             debugPrint('🔄 网络恢复，准备恢复播放...');
             await Future.delayed(const Duration(milliseconds: 500));
@@ -176,6 +177,360 @@ class AppProvider extends ChangeNotifier {
   /// 设置流式服务 SSH 断开监听
   void _setupStreamingServiceListener() {
     _streamingService.onSshDisconnected = () {
+      debugPrint('⚠️ 流式服务检测到SSH断开，准备重连...');
+      _isSSHConnected = false;
+      notifyListeners();
+
+      // SSH 重连成功后，如果之前正在播放，自动恢复播放
+      if (_shouldResumeAfterReconnect) {
+        // ✅ 关键修复：如果用户主动暂停，不要自动恢复播放
+        if (_userManuallyPaused) {
+          debugPrint('⚠️ 用户已主动暂停，SSH恢复后不自动恢复播放');
+          _shouldResumeAfterReconnect = false;
+          // ✅ 不清除 _userManuallyPaused，保留用户的暂停意图
+        } else {
+          debugPrint('🔄 心跳检测：SSH 已恢复，自动恢复播放...');
+          _resumePlaybackAfterReconnect();
+        }
+      }
+    };
+  }
+
+  /// 设置SSH心跳监听
+  void _setupSSHHeartbeatListener() {
+    _sshService.onHeartbeat = (isConnected) {
+      debugPrint('💓 SSH心跳检测: ${isConnected ? "已连接" : "已断开"}');
+      _isSSHConnected = isConnected;
+      notifyListeners();
+
+      // SSH 重连成功后，如果之前正在播放，自动恢复播放
+      if (_shouldResumeAfterReconnect) {
+        // ✅ 关键修复：如果用户主动暂停，不要自动恢复播放
+        if (_userManuallyPaused) {
+          debugPrint('⚠️ 用户已主动暂停，SSH恢复后不自动恢复播放');
+          _shouldResumeAfterReconnect = false;
+          // ✅ 不清除 _userManuallyPaused，保留用户的暂停意图
+        } else {
+          debugPrint('🔄 心跳检测：SSH 已恢复，自动恢复播放...');
+          _resumePlaybackAfterReconnect();
+        }
+      }
+    };
+  }
+
+  /// 设置播放器监听
+  void _setupAudioPlayerListeners() {
+    _audioPlayerService.onPositionChanged = (position) {
+      _position = position;
+      notifyListeners();
+    };
+
+    _audioPlayerService.onDurationChanged = (duration) {
+      _duration = duration;
+      notifyListeners();
+    };
+
+    _audioPlayerService.onPlayerStateChanged = (state) {
+      _isPlaying = state == AudioPlayerState.playing;
+      notifyListeners();
+    };
+  }
+
+  /// 设置定时器监听
+  void _setupTimerListeners() {
+    _timerService.onTimerTick = (position) {
+      _position = position;
+      notifyListeners();
+    };
+  }
+
+  /// 加载SSH配置
+  Future<void> _loadSSHConfigs() async {
+    _sshConfigs = await _databaseService.loadSSHConfigs();
+    notifyListeners();
+  }
+
+  /// 保存SSH配置
+  Future<void> saveSSHConfig(SSHConfig config) async {
+    await _databaseService.saveSSHConfig(config);
+    _sshConfigs = await _databaseService.loadSSHConfigs();
+    notifyListeners();
+  }
+
+  /// 删除SSH配置
+  Future<void> deleteSSHConfig(SSHConfig config) async {
+    await _databaseService.deleteSSHConfig(config);
+    _sshConfigs = await _databaseService.loadSSHConfigs();
+    notifyListeners();
+  }
+
+  /// 设置当前SSH配置
+  Future<void> setActiveSSHConfig(SSHConfig config) async {
+    _activeSSHConfig = config;
+    await _sshService.connect(config);
+    _isSSHConnected = true;
+    notifyListeners();
+  }
+
+  /// 切换本地文件模式
+  void toggleLocalMode() {
+    _isLocalMode = !_isLocalMode;
+    notifyListeners();
+  }
+
+  /// 刷新文件列表
+  Future<void> refreshFiles() async {
+    _isLoading = true;
+    notifyListeners();
+
+    if (_isLocalMode) {
+      _currentFiles = await _loadLocalFiles(_currentPath);
+    } else {
+      _currentFiles = await _loadRemoteFiles(_currentPath);
+    }
+
+    _isLoading = false;
+    _refreshCounter++;
+    notifyListeners();
+  }
+
+  /// 加载本地文件
+  Future<List<MediaFile>> _loadLocalFiles(String path) async {
+    final directory = Directory(path);
+    final files = await directory.list().toList();
+    return files.map((entity) {
+      final isDirectory = entity is Directory;
+      final name = entity.path.split('/').last;
+      return MediaFile(name: name, isDirectory: isDirectory);
+    }).toList();
+  }
+
+  /// 加载远程文件
+  Future<List<MediaFile>> _loadRemoteFiles(String path) async {
+    final files = await _sshService.listFiles(path);
+    return files.map((file) {
+      final isDirectory = file.type == FileType.directory;
+      return MediaFile(name: file.name, isDirectory: isDirectory);
+    }).toList();
+  }
+
+  /// 切换目录
+  Future<void> changeDirectory(String path) async {
+    _currentPath = path;
+    await refreshFiles();
+  }
+
+  /// 打开播放列表
+  Future<void> openPlaylist(String playlistId) async {
+    final playlist = await _databaseService.loadPlaylist(playlistId);
+    _currentPlaylistId = playlistId;
+    _playlist = playlist.files;
+    _currentIndex = 0;
+    _currentPlayingFile = null;
+    _isPlaying = false;
+    _position = Duration.zero;
+    _duration = Duration.zero;
+    _lastPositionForStateCheck = Duration.zero;
+    _shouldResumeAfterReconnect = false;
+    _userManuallyPaused = false;
+    _predownloadIndex = -1;
+    _predownloadMaxIndex = 0;
+    _isPredownloading = false;
+    _downloadCache.clear();
+    notifyListeners();
+
+    // ✅ 关键修复：打开播放列表时恢复播放位置
+    _restoreLastPlayedPosition();
+  }
+
+  /// 恢复上次播放位置
+  Future<void> _restoreLastPlayedPosition() async {
+    if (_currentPlaylistId != null) {
+      final playlist = await _databaseService.loadPlaylist(_currentPlaylistId!);
+      if (playlist.lastPlayedIndex != null) {
+        _currentIndex = playlist.lastPlayedIndex!;
+        _currentPlayingFile = _playlist[_currentIndex];
+        _position = playlist.lastPlayedPosition ?? Duration.zero;
+        _duration = playlist.lastPlayedDuration ?? Duration.zero;
+        _lastPositionForStateCheck = playlist.lastPlayedPosition ?? Duration.zero;
+        _shouldResumeAfterReconnect = true;
+        notifyListeners();
+      }
+    }
+  }
+
+  /// 保存播放列表
+  Future<void> savePlaylist(Playlist playlist) async {
+    await _databaseService.savePlaylist(playlist);
+    notifyListeners();
+  }
+
+  /// 删除播放列表
+  Future<void> deletePlaylist(Playlist playlist) async {
+    await _databaseService.deletePlaylist(playlist);
+    notifyListeners();
+  }
+
+  /// 播放文件
+  Future<void> playFile(MediaFile file) async {
+    _currentPlayingFile = file;
+    _currentIndex = _playlist.indexOf(file);
+    _isPlaying = true;
+    _position = Duration.zero;
+    _duration = Duration.zero;
+    _lastPositionForStateCheck = Duration.zero;
+    _shouldResumeAfterReconnect = true;
+    _userManuallyPaused = false;
+    _predownloadIndex = -1;
+    _predownloadMaxIndex = 0;
+    _isPredownloading = false;
+    _downloadCache.clear();
+    notifyListeners();
+
+    if (_isLocalMode) {
+      final filePath = '${_currentPath}/${file.name}';
+      await _audioPlayerService.play(filePath);
+    } else {
+      final remotePath = '${_currentPath}/${file.name}';
+      final localPath = await _downloadFile(remotePath);
+      await _audioPlayerService.play(localPath);
+    }
+  }
+
+  /// 暂停播放
+  Future<void> pausePlayback() async {
+    await _audioPlayerService.pause();
+    _isPlaying = false;
+    _userManuallyPaused = true;
+    _shouldResumeAfterReconnect = false;
+    notifyListeners();
+  }
+
+  /// 继续播放
+  Future<void> resumePlayback() async {
+    await _audioPlayerService.resume();
+    _isPlaying = true;
+    _userManuallyPaused = false;
+    _shouldResumeAfterReconnect = true;
+    notifyListeners();
+  }
+
+  /// 停止播放
+  Future<void> stopPlayback() async {
+    await _audioPlayerService.stop();
+    _currentPlayingFile = null;
+    _currentIndex = 0;
+    _isPlaying = false;
+    _position = Duration.zero;
+    _duration = Duration.zero;
+    _lastPositionForStateCheck = Duration.zero;
+    _shouldResumeAfterReconnect = false;
+    _userManuallyPaused = false;
+    _predownloadIndex = -1;
+    _predownloadMaxIndex = 0;
+    _isPredownloading = false;
+    _downloadCache.clear();
+    notifyListeners();
+  }
+
+  /// 下一首
+  Future<void> nextTrack() async {
+    if (_currentIndex < _playlist.length - 1) {
+      _currentIndex++;
+      _currentPlayingFile = _playlist[_currentIndex];
+      _isPlaying = true;
+      _position = Duration.zero;
+      _duration = Duration.zero;
+      _lastPositionForStateCheck = Duration.zero;
+      _shouldResumeAfterReconnect = true;
+      _userManuallyPaused = false;
+      _predownloadIndex = -1;
+      _predownloadMaxIndex = 0;
+      _isPredownloading = false;
+      _downloadCache.clear();
+      notifyListeners();
+
+      if (_isLocalMode) {
+        final filePath = '${_currentPath}/${_currentPlayingFile!.name}';
+        await _audioPlayerService.play(filePath);
+      } else {
+        final remotePath = '${_currentPath}/${_currentPlayingFile!.name}';
+        final localPath = await _downloadFile(remotePath);
+        await _audioPlayerService.play(localPath);
+      }
+    }
+  }
+
+  /// 上一首
+  Future<void> previousTrack() async {
+    if (_currentIndex > 0) {
+      _currentIndex--;
+      _currentPlayingFile = _playlist[_currentIndex];
+      _isPlaying = true;
+      _position = Duration.zero;
+      _duration = Duration.zero;
+      _lastPositionForStateCheck = Duration.zero;
+      _shouldResumeAfterReconnect = true;
+      _userManuallyPaused = false;
+      _predownloadIndex = -1;
+      _predownloadMaxIndex = 0;
+      _isPredownloading = false;
+      _downloadCache.clear();
+      notifyListeners();
+
+      if (_isLocalMode) {
+        final filePath = '${_currentPath}/${_currentPlayingFile!.name}';
+        await _audioPlayerService.play(filePath);
+      } else {
+        final remotePath = '${_currentPath}/${_currentPlayingFile!.name}';
+        final localPath = await _downloadFile(remotePath);
+        await _audioPlayerService.play(localPath);
+      }
+    }
+  }
+
+  /// 下载文件
+  Future<String> _downloadFile(String remotePath) async {
+    final localPath = await _permissionService.getDownloadPath();
+    final localFile = File('$localPath/${remotePath.split('/').last}');
+    await _sshService.downloadFile(remotePath, localFile.path);
+    return localFile.path;
+  }
+
+  /// 恢复播放
+  Future<void> _resumePlaybackAfterReconnect() async {
+    if (_currentPlayingFile != null) {
+      _isPlaying = true;
+      _userManuallyPaused = false;
+      _shouldResumeAfterReconnect = true;
+      notifyListeners();
+
+      if (_isLocalMode) {
+        final filePath = '${_currentPath}/${_currentPlayingFile!.name}';
+        await _audioPlayerService.play(filePath);
+      } else {
+        final remotePath = '${_currentPath}/${_currentPlayingFile!.name}';
+        final localPath = await _downloadFile(remotePath);
+        await _audioPlayerService.play(localPath);
+      }
+    }
+  }
+
+  /// 后台预下载
+  Future<void> _startPredownload() async {
+    if (_currentIndex < _playlist.length - 1) {
+      _predownloadIndex = _currentIndex + 1;
+      _predownloadMaxIndex = _playlist.length - 1;
+      _isPredownloading = true;
+      notifyListeners();
+
+      while (_predownloadIndex <= _predownloadMaxIndex) {
+        final file = _playlist[_predownloadIndex];
+        final remotePath = '${_currentPath}/${file.name}';
+        final localPath = await _downloadFile(remotePath);
+        _downloadCache[remotePath] = localPath;
+        _predownloadIndex++;
+      }
       debugPrint('🔄 流式服务检测到 SSH 断开，准备恢复播放...');
       // 流式服务的 SSH 断开，触发自动恢复
       if (_isPlaying && _currentPlayingFile != null) {
@@ -242,8 +597,9 @@ class AppProvider extends ChangeNotifier {
     _isAutoResuming = true;
     _shouldResumeAfterReconnect = true;
     _playbackPositionBeforeDisconnect = _audioPlayerService.currentPosition;
-    _userManuallyPaused = false;
-    debugPrint('💾 保存播放进度: ${_playbackPositionBeforeDisconnect}（非用户主动暂停）');
+    // ✅ 关键修复：不要清除 _userManuallyPaused，保留用户的暂停意图
+    // 如果用户之前是手动暂停的，网络恢复后也不应该自动播放
+    debugPrint('💾 保存播放进度: ${_playbackPositionBeforeDisconnect}，用户手动暂停状态: $_userManuallyPaused');
     
     // 停止当前播放（因为 SSH 已断开，流式服务无法工作）
     try {
@@ -318,7 +674,7 @@ class AppProvider extends ChangeNotifier {
       // ✅ 关键修复：根据实际播放器状态同步 _isPlaying
       // 但要避免与用户操作产生竞争，只在以下情况更新：
       // 1. 播放器真正开始播放（playing状态）
-      // 2. 播放器完成或停止（completed/idle状态）
+      // 2. 播放完成或停止（completed/idle状态）
       // 3. 其他状态（paused/buffering/loading）不改变 _isPlaying
       
       final wasPlaying = _isPlaying;
@@ -475,6 +831,13 @@ class AppProvider extends ChangeNotifier {
     final wasConnected = _sshService.isConnected;
     if (wasConnected) {
       debugPrint('ℹ️ SSH已连接，无需重连和恢复播放');
+      return;
+    }
+    
+    // ✅ 关键修复：如果用户主动暂停，不进行自动恢复
+    if (_userManuallyPaused) {
+      debugPrint('⚠️ 用户已主动暂停，网络恢复后不自动恢复播放');
+      _shouldResumeAfterReconnect = false;
       return;
     }
     
@@ -1071,6 +1434,12 @@ class AppProvider extends ChangeNotifier {
     _isPlaying = false;
     _currentPlayingFile = null;
     _stopPredownloading();
+    
+    // ✅ 关键修复：停止播放时清除所有恢复标志
+    _userManuallyPaused = false;
+    _shouldResumeAfterReconnect = false;
+    _playbackPositionBeforeDisconnect = null;
+    debugPrint('🛑 停止播放，清除所有恢复标志');
     
     // ✅ 更新 MediaSession 播放状态为停止
     _updateMediaSessionPlaybackState(isPlaying: false);
