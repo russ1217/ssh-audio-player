@@ -343,7 +343,7 @@ class AppProvider extends ChangeNotifier {
       // ✅ 关键修复：根据实际播放器状态同步 _isPlaying
       // 但要避免与用户操作产生竞争，只在以下情况更新：
       // 1. 播放器真正开始播放（playing状态）
-      // 2. 播放器完成或停止（completed/idle状态）
+      // 2. 播放完成或停止（completed/idle状态）
       // 3. 其他状态（paused/buffering/loading）不改变 _isPlaying
       
       final wasPlaying = _isPlaying;
@@ -849,7 +849,9 @@ class AppProvider extends ChangeNotifier {
       
       if (isReady) {
         _isPlaying = true;
-        debugPrint('✅ 播放完成设置: _currentIndex=$_currentIndex');
+        // ✅ 关键修复：用户主动播放，清除暂停标志
+        _userManuallyPaused = false;
+        debugPrint('✅ 播放完成设置: _currentIndex=$_currentIndex, _userManuallyPaused=false');
         
         // ✅ 更新播放状态为播放中
         _updateMediaSessionPlaybackState(isPlaying: true);
@@ -862,6 +864,11 @@ class AppProvider extends ChangeNotifier {
         await _audioPlayerService.play();
         final retryReady = await _waitForPlayerReady(timeout: const Duration(seconds: 5));
         _isPlaying = retryReady;
+        // ✅ 关键修复：即使命中兜底逻辑，也要清除暂停标志
+        if (retryReady) {
+          _userManuallyPaused = false;
+          debugPrint('✅ 兜底播放成功，_userManuallyPaused=false');
+        }
         
         // ✅ 更新播放状态
         _updateMediaSessionPlaybackState(isPlaying: retryReady);
