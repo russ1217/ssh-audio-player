@@ -860,20 +860,26 @@ class AppProvider extends ChangeNotifier {
         // 流式播放会边下边播，预下载已无意义
         debugPrint('📌 使用${_isLocalMode ? "本地" : "流式"}播放，无需预下载');
       } else {
-        debugPrint('⚠️ 播放器未就绪，尝试重新播放');
-        await _audioPlayerService.play();
-        final retryReady = await _waitForPlayerReady(timeout: const Duration(seconds: 5));
-        _isPlaying = retryReady;
-        // ✅ 关键修复：即使命中兜底逻辑，也要清除暂停标志
-        if (retryReady) {
-          _userManuallyPaused = false;
-          debugPrint('✅ 兜底播放成功，_userManuallyPaused=false');
+        // ✅ 关键修复：在兜底逻辑中检查用户是否主动暂停
+        if (_userManuallyPaused) {
+          debugPrint('⚠️ 用户已主动暂停，跳过兜底播放逻辑');
+          _isPlaying = false;
+          _updateMediaSessionPlaybackState(isPlaying: false);
+        } else {
+          debugPrint('⚠️ 播放器未就绪，尝试重新播放');
+          await _audioPlayerService.play();
+          final retryReady = await _waitForPlayerReady(timeout: const Duration(seconds: 5));
+          _isPlaying = retryReady;
+          // ✅ 关键修复：即使命中兜底逻辑，也要清除暂停标志
+          if (retryReady) {
+            _userManuallyPaused = false;
+            debugPrint('✅ 兜底播放成功，_userManuallyPaused=false');
+          }
+          
+          // ✅ 更新播放状态
+          _updateMediaSessionPlaybackState(isPlaying: retryReady);
         }
-        
-        // ✅ 更新播放状态
-        _updateMediaSessionPlaybackState(isPlaying: retryReady);
       }
-      
       // 保存播放位置
       await _saveCurrentPlaybackPosition();
     } catch (e, stackTrace) {
