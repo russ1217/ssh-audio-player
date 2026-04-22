@@ -216,13 +216,20 @@ class AudioPlayerService extends AudioPlayerServiceBase {
   }
 
   @override
-  Future<void> playUrl(String url, {bool isVideo = false}) async {
+  Future<void> playUrl(String url, {bool isVideo = false, Duration? initialPosition}) async {
     // ✅ 关键修复：确保初始化完成后再播放
     await ensureInitialized();
     
     if (!_isInitialized || _audioPlayer == null) return;
     try {
       await _audioPlayer!.setUrl(url);
+      
+      // ✅ 关键修复：如果指定了起始位置，先 seek 再播放
+      if (initialPosition != null && initialPosition > Duration.zero) {
+        debugPrint('⏩ 跳转到起始位置: $initialPosition');
+        await _audioPlayer!.seek(initialPosition);
+      }
+      
       await _audioPlayer!.play();
     } catch (e) {
       debugPrint('播放 URL 失败: $e');

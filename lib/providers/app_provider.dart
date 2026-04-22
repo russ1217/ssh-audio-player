@@ -310,14 +310,13 @@ class AppProvider extends ChangeNotifier {
       
       // ✅ 关键修复：统一使用流式播放，不再区分文件大小
       debugPrint('🌐 重新启动流式服务...');
-      await _playMediaStreaming(file);
+      
+      // ✅ 关键修复：传递断点位置，在播放前 seek
+      await _playMediaStreaming(file, initialPosition: _playbackPositionBeforeDisconnect);
 
-      // 恢复播放进度
+      // ✅ 关键修复：不再需要手动 seek，因为已经在 playUrl 中处理了
       if (_playbackPositionBeforeDisconnect != null && _playbackPositionBeforeDisconnect! > Duration.zero) {
-        // 等待播放器加载完成
-        await Future.delayed(const Duration(milliseconds: 500));
-        await _audioPlayerService.seek(_playbackPositionBeforeDisconnect!);
-        debugPrint('⏩ 恢复到进度: $_playbackPositionBeforeDisconnect');
+        debugPrint('⏩ 已设置起始位置: $_playbackPositionBeforeDisconnect');
       }
 
       _shouldResumeAfterReconnect = false;
@@ -896,7 +895,7 @@ class AppProvider extends ChangeNotifier {
   }
 
   // 大文件：真正的流式下载边下边播（现在所有文件都用这个方法）
-  Future<void> _playMediaStreaming(MediaFile file) async {
+  Future<void> _playMediaStreaming(MediaFile file, {Duration? initialPosition}) async {
     debugPrint('🌐 启动 HTTP 流式服务...');
 
     final fileSize = file.size ?? await _sshService.getFileSize(file.path) ?? 0;
@@ -909,9 +908,9 @@ class AppProvider extends ChangeNotifier {
       createNewSshClient: _sshService.createNewConnection,
     );
 
-    debugPrint('🎵 开始播放流式媒体: $streamUrl');
+    debugPrint('🎵 开始播放流式媒体: $streamUrl${initialPosition != null ? ', 起始位置: $initialPosition' : ''}');
     final isVideo = file.isVideo;
-    await _audioPlayerService.playUrl(streamUrl, isVideo: isVideo);
+    await _audioPlayerService.playUrl(streamUrl, isVideo: isVideo, initialPosition: initialPosition);
   }
 
   /// 开始后台预下载（最多预下载当前曲目后3个）

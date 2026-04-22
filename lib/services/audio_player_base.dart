@@ -19,7 +19,7 @@ abstract class AudioPlayerServiceBase {
   Future<void> ensureInitialized();
 
   Future<void> playFile(String filePath, {bool isVideo = false});
-  Future<void> playUrl(String url, {bool isVideo = false});
+  Future<void> playUrl(String url, {bool isVideo = false, Duration? initialPosition});
   Future<void> play();
   Future<void> pause();
   Future<void> stop();

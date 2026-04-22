@@ -65,7 +65,7 @@ class _DesktopAudioPlayerService extends AudioPlayerServiceBase {
   }
 
   @override
-  Future<void> playUrl(String url, {bool isVideo = false}) async {
+  Future<void> playUrl(String url, {bool isVideo = false, Duration? initialPosition}) async {
     debugPrint('⚠️ 桌面平台不支持播放 URL: $url');
   }
 
@@ -308,10 +308,10 @@ class _MobileAudioPlayerService extends AudioPlayerServiceBase {
   }
 
   @override
-  Future<void> playUrl(String url, {bool isVideo = false}) async {
+  Future<void> playUrl(String url, {bool isVideo = false, Duration? initialPosition}) async {
     if (!_isInitialized || _audioPlayer == null) return;
     try {
-      debugPrint('🎵 准备播放 URL: $url');
+      debugPrint('🎵 准备播放 URL: $url${initialPosition != null ? ', 起始位置: $initialPosition' : ''}');
       
       // ✅ 关键修复：在播放前激活音频会话
       try {
@@ -328,6 +328,13 @@ class _MobileAudioPlayerService extends AudioPlayerServiceBase {
       
       await _audioPlayer!.setUrl(url);
       debugPrint('🎵 URL 加载成功，持续时间: ${_audioPlayer!.duration}');
+      
+      // ✅ 关键修复：如果指定了起始位置，先 seek 再播放
+      if (initialPosition != null && initialPosition > Duration.zero) {
+        debugPrint('⏩ 跳转到起始位置: $initialPosition');
+        await _audioPlayer!.seek(initialPosition);
+      }
+      
       await _audioPlayer!.play();
       debugPrint('🎵 播放命令已发送');
     } catch (e, stackTrace) {
