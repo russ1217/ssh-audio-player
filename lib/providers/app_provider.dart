@@ -1090,6 +1090,9 @@ class AppProvider extends ChangeNotifier {
         
         _isPlaying = true;
         debugPrint('▶️ 用户主动播放，_isPlaying = true');
+        
+        // ✅ 更新 MediaSession 播放状态为播放中
+        _updateMediaSessionPlaybackState(isPlaying: true);
       }
       notifyListeners();
     } catch (e) {
