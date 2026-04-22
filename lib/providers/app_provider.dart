@@ -156,7 +156,7 @@ class AppProvider extends ChangeNotifier {
           if (_userManuallyPaused) {
             debugPrint('⚠️ 用户已主动暂停，网络恢复后不自动恢复播放');
             _shouldResumeAfterReconnect = false;
-            _userManuallyPaused = false;
+            // ✅ 关键修复：不清除 _userManuallyPaused，保持用户意图
           } else {
             debugPrint('🔄 网络恢复，准备恢复播放...');
             await Future.delayed(const Duration(milliseconds: 500));
@@ -216,10 +216,13 @@ class AppProvider extends ChangeNotifier {
         }
       } else {
         debugPrint('✅ SSH 连接已恢复');
-        // SSH 重连成功后，如果之前正在播放，自动恢复播放
-        if (_shouldResumeAfterReconnect) {
+        // SSH 重连成功后，如果之前正在播放且用户未主动暂停，自动恢复播放
+        if (_shouldResumeAfterReconnect && !_userManuallyPaused) {
           debugPrint('🔄 心跳检测：SSH 已恢复，自动恢复播放...');
           _resumePlaybackAfterReconnect();
+        } else if (_userManuallyPaused) {
+          debugPrint('⚠️ 用户已主动暂停，SSH恢复后不自动播放');
+          _shouldResumeAfterReconnect = false;
         }
       }
       notifyListeners();
@@ -239,11 +242,17 @@ class AppProvider extends ChangeNotifier {
       return;
     }
     
+    // ✅ 关键修复：如果用户主动暂停，不要触发自动恢复
+    if (_userManuallyPaused) {
+      debugPrint('⚠️ 用户已主动暂停，SSH断开时不触发自动恢复');
+      return;
+    }
+    
     _isAutoResuming = true;
     _shouldResumeAfterReconnect = true;
     _playbackPositionBeforeDisconnect = _audioPlayerService.currentPosition;
-    _userManuallyPaused = false;
-    debugPrint('💾 保存播放进度: ${_playbackPositionBeforeDisconnect}（非用户主动暂停）');
+    // ✅ 关键修复：不清除 _userManuallyPaused，保持其状态不变
+    debugPrint('💾 保存播放进度: ${_playbackPositionBeforeDisconnect}（_userManuallyPaused=$_userManuallyPaused）');
     
     // 停止当前播放（因为 SSH 已断开，流式服务无法工作）
     try {
@@ -274,6 +283,14 @@ class AppProvider extends ChangeNotifier {
       return;
     }
 
+    // ✅ 关键修复：如果用户主动暂停，不要自动恢复播放
+    if (_userManuallyPaused) {
+      debugPrint('⚠️ 用户已主动暂停，SSH重连后不自动恢复播放');
+      _shouldResumeAfterReconnect = false;
+      _isAutoResuming = false;
+      return;
+    }
+
     try {
       debugPrint('🔄 正在恢复播放: ${_currentPlayingFile!.name}');
       
@@ -297,14 +314,13 @@ class AppProvider extends ChangeNotifier {
       _shouldResumeAfterReconnect = false;
       _playbackPositionBeforeDisconnect = null;
       _isAutoResuming = false;
-      // ✅ 恢复播放成功后，清除用户主动暂停标志
-      _userManuallyPaused = false;
+      // ✅ 关键修复：不清除 _userManuallyPaused，因为它应该为 false（否则不会进入这里）
       _isPlaying = true;
       
       // ✅ 更新 MediaSession 播放状态为播放中
       _updateMediaSessionPlaybackState(isPlaying: true);
       
-      debugPrint('✅ 播放已恢复（_userManuallyPaused = false）');
+      debugPrint('✅ 播放已恢复（_userManuallyPaused=$_userManuallyPaused）');
     } catch (e) {
       debugPrint('❌ 恢复播放失败: $e');
       _shouldResumeAfterReconnect = false;
