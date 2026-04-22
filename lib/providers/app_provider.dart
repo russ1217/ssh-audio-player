@@ -177,9 +177,14 @@ class AppProvider extends ChangeNotifier {
   void _setupStreamingServiceListener() {
     _streamingService.onSshDisconnected = () {
       debugPrint('🔄 流式服务检测到 SSH 断开，准备恢复播放...');
-      // 流式服务的 SSH 断开，触发自动恢复
-      if (_isPlaying && _currentPlayingFile != null) {
+      // ✅ 关键修复：增加对用户主动暂停的检查
+      if (_isPlaying && _currentPlayingFile != null && !_userManuallyPaused) {
+        debugPrint('🔄 触发自动恢复播放（非用户主动暂停）');
         _autoResumePlayback();
+      } else if (_userManuallyPaused) {
+        debugPrint('⚠️ 用户已主动暂停，SSH断开时不触发自动恢复');
+      } else {
+        debugPrint('ℹ️ 不满足自动恢复条件（_isPlaying=$_isPlaying, _currentPlayingFile=$_currentPlayingFile）');
       }
     };
   }
@@ -209,10 +214,14 @@ class AppProvider extends ChangeNotifier {
       _isSSHConnected = isConnected;
       if (!isConnected) {
         debugPrint('⚠️ SSH 连接已断开');
-        // SSH 断开时，如果正在使用流式播放，尝试自动恢复
-        if (_isPlaying && _currentPlayingFile != null && !_isAutoResuming) {
-          debugPrint('🔄 心跳检测：SSH 断开，自动恢复播放');
+        // ✅ 关键修复：增加对用户主动暂停的检查
+        if (_isPlaying && _currentPlayingFile != null && !_isAutoResuming && !_userManuallyPaused) {
+          debugPrint('🔄 心跳检测：SSH 断开，自动恢复播放（非用户主动暂停）');
           _autoResumePlayback();
+        } else if (_userManuallyPaused) {
+          debugPrint('⚠️ 用户已主动暂停，SSH断开时不触发自动恢复');
+        } else {
+          debugPrint('ℹ️ 不满足自动恢复条件（_isPlaying=$_isPlaying, _currentPlayingFile=$_currentPlayingFile, _isAutoResuming=$_isAutoResuming）');
         }
       } else {
         debugPrint('✅ SSH 连接已恢复');
