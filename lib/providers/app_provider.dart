@@ -1018,9 +1018,11 @@ class AppProvider extends ChangeNotifier {
         // ✅ 更新 MediaSession 播放状态为暂停
         _updateMediaSessionPlaybackState(isPlaying: false);
       } else {
-        // ✅ 关键修复：SSH 音频需要重新启动流式服务
+        // ✅ 关键修复：区分本地文件和流式文件的恢复逻辑
         if (_currentPlayingFile != null && !_isLocalMode) {
-          debugPrint('🔄 SSH 音频恢复播放，重新启动流式服务...');
+          // SSH 流式文件：直接恢复播放，不重新启动流式服务
+          // 流式服务已经在首次播放时启动，暂停/恢复只需控制播放器
+          debugPrint('▶️ SSH 流式文件恢复播放（使用现有流式连接）');
           
           // 检查 SSH 连接是否有效
           final sshConnected = await _ensureSSHConnection();
@@ -1029,16 +1031,14 @@ class AppProvider extends ChangeNotifier {
             return;
           }
           
-          // 重新启动流式服务
-          final file = _currentPlayingFile!;
-          debugPrint('🌐 重新启动 HTTP 流式服务...');
-          await _playMediaStreaming(file);
+          // ✅ 直接调用 play() 恢复播放，保持当前位置
+          await _audioPlayerService.play();
           
-          // 恢复播放进度（如果有保存的进度）
+          // 如果有之前保存的进度（来自断线重连），恢复到该位置
           if (_playbackPositionBeforeDisconnect != null && _playbackPositionBeforeDisconnect! > Duration.zero) {
             await Future.delayed(const Duration(milliseconds: 500));
             await _audioPlayerService.seek(_playbackPositionBeforeDisconnect!);
-            debugPrint('⏩ 恢复到进度: $_playbackPositionBeforeDisconnect');
+            debugPrint('⏩ 恢复到断线前的进度: $_playbackPositionBeforeDisconnect');
             _playbackPositionBeforeDisconnect = null; // 清除保存的进度
           }
         } else {
