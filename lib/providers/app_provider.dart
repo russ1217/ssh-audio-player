@@ -230,6 +230,13 @@ class AppProvider extends ChangeNotifier {
   void _setupSSHHeartbeatListener() {
     _sshService.connectionStatusStream.listen((isConnected) {
       _isSSHConnected = isConnected;
+      
+      // ✅ 关键修复：如果是本地模式，SSH状态变化不应影响播放
+      if (_isLocalMode) {
+        debugPrint('ℹ️ 本地模式，忽略SSH状态变化（$isConnected）');
+        return;
+      }
+      
       if (!isConnected) {
         debugPrint('⚠️ SSH 连接已断开');
         // SSH 断开时，如果正在使用流式播放，尝试自动恢复
@@ -258,8 +265,20 @@ class AppProvider extends ChangeNotifier {
 
   /// SSH 断开时保存播放状态
   Future<void> _autoResumePlayback() async {
+    // ✅ 关键修复：如果是本地模式，不触发自动恢复
+    if (_isLocalMode) {
+      debugPrint('ℹ️ 本地模式，SSH断开不触发自动恢复');
+      return;
+    }
+
     if (_isAutoResuming) {
       debugPrint('⚠️ 已经在自动恢复中，忽略重复请求');
+      return;
+    }
+    
+    // ✅ 关键修复：如果用户主动暂停，不要触发自动恢复
+    if (_userManuallyPaused) {
+      debugPrint('⚠️ 用户已主动暂停，SSH断开时不触发自动恢复');
       return;
     }
     
@@ -268,7 +287,7 @@ class AppProvider extends ChangeNotifier {
     _playbackPositionBeforeDisconnect = _audioPlayerService.currentPosition;
     _isWaitingForSSHReconnect = true; // ✅ 新增：标记正在等待SSH重连
     
-    // ✅ 关键修复：不再强制清除 _userManuallyPaused，保持用户意图
+    // ✅ 关键修复：不清除 _userManuallyPaused，保持其状态不变
     debugPrint('💾 保存播放进度: ${_playbackPositionBeforeDisconnect}（_userManuallyPaused=$_userManuallyPaused）');
     
     // 停止当前播放（因为 SSH 已断开，流式服务无法工作）
@@ -295,6 +314,14 @@ class AppProvider extends ChangeNotifier {
 
   /// SSH 重连成功后恢复播放
   Future<void> _resumePlaybackAfterReconnect() async {
+    // ✅ 关键修复：如果是本地模式，不进行任何恢复操作
+    if (_isLocalMode) {
+      debugPrint('ℹ️ 本地模式，跳过SSH恢复播放逻辑');
+      _shouldResumeAfterReconnect = false;
+      _isAutoResuming = false;
+      return;
+    }
+    
     if (_currentPlayingFile == null) {
       _shouldResumeAfterReconnect = false;
       _isAutoResuming = false;
@@ -556,6 +583,12 @@ class AppProvider extends ChangeNotifier {
   /// ✅ 公开方法：手动触发网络恢复检查（供main.dart调用）
   Future<void> handleNetworkReconnected() async {
     debugPrint('🔄 手动触发网络恢复检查...');
+    
+    // ✅ 关键修复：如果是本地模式，不进行SSH重连和播放恢复
+    if (_isLocalMode) {
+      debugPrint('ℹ️ 本地模式，跳过SSH重连和恢复逻辑');
+      return;
+    }
     
     // ✅ 关键修复：先检查SSH是否已经连接
     final wasConnected = _sshService.isConnected;
