@@ -58,7 +58,13 @@ class FileListItem extends StatelessWidget {
     if (file.isDirectory) {
       provider.navigateTo(file.path);
     } else if (file.isMedia) {
-      provider.playMedia(file);
+      provider.addToPlaylist(file);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已添加到播放列表: ${file.name}'),
+          duration: const Duration(seconds: 1),
+        ),
+      );
     }
   }
 
