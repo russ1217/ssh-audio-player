@@ -19,10 +19,19 @@ class FileListItem extends StatelessWidget {
         file.name,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          fontSize: 14,
+        ),
       ),
       subtitle: file.isDirectory
-          ? const Text('文件夹')
-          : Text(_formatFileSize(file.size)),
+          ? const Text(
+              '文件夹',
+              style: TextStyle(fontSize: 12),
+            )
+          : Text(
+              _formatFileSize(file.size),
+              style: const TextStyle(fontSize: 12),
+            ),
       trailing: file.isDirectory
           ? const Icon(Icons.chevron_right)
           : const Icon(Icons.more_vert),
