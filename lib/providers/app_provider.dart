@@ -1065,6 +1065,9 @@ class AppProvider extends ChangeNotifier {
           // 流式服务已经在首次播放时启动，暂停/恢复只需控制播放器
           debugPrint('▶️ SSH 流式文件恢复播放（使用现有流式连接）');
           
+          // ✅ 关键修复：恢复播放时更新 MediaSession 元数据（确保车机显示曲目名称）
+          _updateMediaSessionMetadata(_currentPlayingFile!);
+          
           // 检查 SSH 连接是否有效
           final sshConnected = await _ensureSSHConnection();
           if (!sshConnected) {
@@ -1085,6 +1088,12 @@ class AppProvider extends ChangeNotifier {
         } else {
           // 本地音频直接播放
           debugPrint('▶️ 本地音频恢复播放');
+          
+          // ✅ 关键修复：恢复播放时更新 MediaSession 元数据（确保车机显示曲目名称）
+          if (_currentPlayingFile != null) {
+            _updateMediaSessionMetadata(_currentPlayingFile!);
+          }
+          
           await _audioPlayerService.play();
         }
         
