@@ -1132,7 +1132,6 @@ class AppProvider extends ChangeNotifier {
             _showMessage('SSH连接失败，请检查网络后重试');
             return;
           }
-          }
           
           // SSH已连接，尝试恢复播放
           debugPrint('▶️ SSH 流式文件恢复播放（使用现有流式连接）');
