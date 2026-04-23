@@ -441,7 +441,11 @@ class AppProvider extends ChangeNotifier {
         _activeSSHConfig = config;
         _isSSHConnected = true;
         _currentPath = config.initialPath ?? '/';
-        await _loadCurrentDirectory();
+        
+        // ✅ 关键修复：直接加载目录，避免重复的SSH连接检查
+        debugPrint('✅ SSH连接成功，开始加载目录: $_currentPath');
+        await _loadCurrentDirectory(skipSSHCheck: true);
+        debugPrint('✅ 目录加载完成，共 ${_currentFiles.length} 个项目');
       }
       return success;
     } catch (e) {
@@ -465,6 +469,7 @@ class AppProvider extends ChangeNotifier {
     }
     
     notifyListeners();
+  }
   }
 
   /// ✅ 公开方法：手动触发网络恢复检查（供main.dart调用）
@@ -611,7 +616,7 @@ class AppProvider extends ChangeNotifier {
   }
 
   // 文件浏览
-  Future<void> _loadCurrentDirectory() async {
+  Future<void> _loadCurrentDirectory({bool skipSSHCheck = false}) async {
     // ✅ 关键修复：如果已经在加载中，避免重复加载
     if (_isLoading) {
       debugPrint('⚠️ 目录正在加载中，跳过重复请求');
@@ -704,19 +709,25 @@ class AppProvider extends ChangeNotifier {
         }
       } else {
         // ✅ SSH 远程模式加载逻辑
-        // 在加载目录前确保 SSH 连接有效
-        final isConnected = await _ensureSSHConnection();
-        if (!isConnected) {
-          _isSSHConnected = false;
-          _currentFiles = [];
-          debugPrint('❌ SSH 连接失败，无法加载目录');
-          return;
+        // ✅ 优化：如果是刚连接成功（skipSSHCheck=true），跳过重复的SSH连接检查
+        if (!skipSSHCheck) {
+          final isConnected = await _ensureSSHConnection();
+          if (!isConnected) {
+            _isSSHConnected = false;
+            _currentFiles = [];
+            debugPrint('❌ SSH 连接失败，无法加载目录');
+            return;
+          }
+        } else {
+          debugPrint('✅ 跳过SSH连接检查（已在connectSSH中验证）');
         }
 
         // ✅ 关键修复：将耗时的SSH操作放到后台执行，避免阻塞UI线程
         await Future.delayed(Duration.zero);
         
+        debugPrint('📡 开始从SSH服务器获取目录列表: $_currentPath');
         final sshFiles = await _sshService.listDirectory(_currentPath);
+        debugPrint('✅ 从SSH服务器获取到 ${sshFiles.length} 个项目');
         
         // ✅ 关键修复：将SSH获取的文件标记为远程文件
         _currentFiles = sshFiles.map((file) => MediaFile(
@@ -1184,13 +1195,29 @@ class AppProvider extends ChangeNotifier {
         
         debugPrint('📊 本地目录扫描完成，找到 ${files.length} 个项目');
       } else {
-        // ✅ SSH模式：使用SSH服务
-        debugPrint('🌐 SSH模式：扫描目录 $path');
+        // ✅ SSH 远程模式加载逻辑
+        // ✅ 优化：如果是刚连接成功（skipSSHCheck=true），跳过重复的SSH连接检查
+        if (!skipSSHCheck) {
+          final isConnected = await _ensureSSHConnection();
+          if (!isConnected) {
+            _isSSHConnected = false;
+            _currentFiles = [];
+            debugPrint('❌ SSH 连接失败，无法加载目录');
+            return;
+          }
+        } else {
+          debugPrint('✅ 跳过SSH连接检查（已在connectSSH中验证）');
+        }
+
+        // ✅ 关键修复：将耗时的SSH操作放到后台执行，避免阻塞UI线程
         await Future.delayed(Duration.zero);
-        files = await _sshService.listDirectory(path);
+        
+        debugPrint('📡 开始从SSH服务器获取目录列表: $_currentPath');
+        final sshFiles = await _sshService.listDirectory(_currentPath);
+        debugPrint('✅ 从SSH服务器获取到 ${sshFiles.length} 个项目');
         
         // ✅ 关键修复：将SSH获取的文件标记为远程文件
-        files = files.map((file) => MediaFile(
+        _currentFiles = sshFiles.map((file) => MediaFile(
           path: file.path,
           name: file.name,
           isDirectory: file.isDirectory,
