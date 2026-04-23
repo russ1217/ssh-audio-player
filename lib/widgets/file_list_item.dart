@@ -34,9 +34,42 @@ class FileListItem extends StatelessWidget {
             ),
       trailing: file.isDirectory
           ? const Icon(Icons.chevron_right)
-          : const Icon(Icons.more_vert),
+          : PopupMenuButton<String>(
+              onSelected: (value) => _onMenuSelected(context, value),
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'play',
+                  child: Row(
+                    children: [
+                      Icon(Icons.play_arrow),
+                      SizedBox(width: 8),
+                      Text('播放'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'playlist_add',
+                  child: Row(
+                    children: [
+                      Icon(Icons.playlist_add),
+                      SizedBox(width: 8),
+                      Text('添加到播放列表'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'info',
+                  child: Row(
+                    children: [
+                      Icon(Icons.info),
+                      SizedBox(width: 8),
+                      Text('文件信息'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
       onTap: () => _onTap(context),
-      onLongPress: file.isMedia ? () => _onLongPress(context) : null,
     );
   }
 
@@ -68,44 +101,21 @@ class FileListItem extends StatelessWidget {
     }
   }
 
-  void _onLongPress(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.play_arrow),
-              title: const Text('播放'),
-              onTap: () {
-                Navigator.pop(context);
-                context.read<AppProvider>().playMedia(file);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.playlist_add),
-              title: const Text('添加到播放列表'),
-              onTap: () {
-                Navigator.pop(context);
-                context.read<AppProvider>().addToPlaylist(file);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('已添加到播放列表')),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.info),
-              title: const Text('文件信息'),
-              onTap: () {
-                Navigator.pop(context);
-                _showFileInfo(context);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
+  void _onMenuSelected(BuildContext context, String value) {
+    switch (value) {
+      case 'play':
+        context.read<AppProvider>().playMedia(file);
+        break;
+      case 'playlist_add':
+        context.read<AppProvider>().addToPlaylist(file);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已添加到播放列表')),
+        );
+        break;
+      case 'info':
+        _showFileInfo(context);
+        break;
+    }
   }
 
   void _showFileInfo(BuildContext context) {
