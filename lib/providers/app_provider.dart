@@ -442,7 +442,8 @@ class AppProvider extends ChangeNotifier {
         _isSSHConnected = true;
         _currentPath = config.initialPath ?? '/';
         
-        // ✅ 关键修复：直接加载目录，避免重复的SSH连接检查
+        // ✅ 关键修复：临时重置isLoading状态，避免_loadCurrentDirectory直接返回
+        _isLoading = false;
         debugPrint('✅ SSH连接成功，开始加载目录: $_currentPath');
         await _loadCurrentDirectory(skipSSHCheck: true);
         debugPrint('✅ 目录加载完成，共 ${_currentFiles.length} 个项目');
