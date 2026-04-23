@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../providers/app_provider.dart';
+import '../providers/app_provider.dart' as app_provider;
 import '../services/timer_service.dart';
 
 class BottomPlayerBar extends StatelessWidget {
@@ -8,7 +8,7 @@ class BottomPlayerBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<AppProvider>(
+    return Consumer<app_provider.AppProvider>(
       builder: (context, provider, child) {
         // 如果没有正在播放的文件，隐藏底部栏
         if (provider.currentPlayingFile == null) {
@@ -72,11 +72,27 @@ class BottomPlayerBar extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
+                  // ✅ 新增：循环模式切换按钮
+                  IconButton(
+                    icon: _buildRepeatIcon(provider.repeatMode),
+                    onPressed: () => provider.toggleRepeatMode(),
+                    tooltip: _getRepeatTooltip(provider.repeatMode),
+                    color: provider.repeatMode != app_provider.RepeatMode.none 
+                        ? Theme.of(context).colorScheme.primary 
+                        : null,
+                  ),
                   // 上一曲
                   IconButton(
                     icon: const Icon(Icons.skip_previous),
-                    onPressed: provider.currentIndex > 0
-                        ? () => provider.playPreviousInPlaylist()
+                    onPressed: provider.currentIndex > 0 || provider.repeatMode == app_provider.RepeatMode.all
+                        ? () {
+                            if (provider.currentIndex > 0) {
+                              provider.playPreviousInPlaylist();
+                            } else if (provider.repeatMode == app_provider.RepeatMode.all && provider.playlist.isNotEmpty) {
+                              // 循环模式下，从第一首可以跳到最后一首
+                              provider.playFromPlaylistIndex(provider.playlist.length - 1);
+                            }
+                          }
                         : null,
                     tooltip: '上一曲',
                   ),
@@ -103,8 +119,19 @@ class BottomPlayerBar extends StatelessWidget {
                   // 下一曲
                   IconButton(
                     icon: const Icon(Icons.skip_next),
-                    onPressed: provider.currentIndex < provider.playlist.length - 1
-                        ? () => provider.playNextInPlaylist()
+                    onPressed: provider.playlist.isNotEmpty &&
+                            (provider.currentIndex < provider.playlist.length - 1 ||
+                                provider.repeatMode == app_provider.RepeatMode.all ||
+                                provider.repeatMode == app_provider.RepeatMode.one)
+                        ? () {
+                            if (provider.currentIndex < provider.playlist.length - 1) {
+                              provider.playNextInPlaylist();
+                            } else if (provider.repeatMode == app_provider.RepeatMode.all ||
+                                provider.repeatMode == app_provider.RepeatMode.one) {
+                              // 循环模式下（全部或单曲），从最后一首可以跳到第一首
+                              provider.playFromPlaylistIndex(0);
+                            }
+                          }
                         : null,
                     tooltip: '下一曲',
                   ),
@@ -255,5 +282,53 @@ class BottomPlayerBar extends StatelessWidget {
       return '${hours}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
     }
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  /// ✅ 新增：根据循环模式构建图标
+  Widget _buildRepeatIcon(app_provider.RepeatMode mode) {
+    switch (mode) {
+      case app_provider.RepeatMode.none:
+        return const Icon(Icons.repeat, color: Colors.grey);
+      case app_provider.RepeatMode.all:
+        return const Icon(Icons.repeat, color: Colors.blue);
+      case app_provider.RepeatMode.one:
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            const Icon(Icons.repeat_one, color: Colors.blue),
+            Positioned(
+              right: 0,
+              top: 0,
+              child: Container(
+                padding: const EdgeInsets.all(2),
+                decoration: const BoxDecoration(
+                  color: Colors.red,
+                  shape: BoxShape.circle,
+                ),
+                child: const Text(
+                  '1',
+                  style: TextStyle(
+                    fontSize: 8,
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+    }
+  }
+
+  /// ✅ 新增：获取循环模式的提示文本
+  String _getRepeatTooltip(app_provider.RepeatMode mode) {
+    switch (mode) {
+      case app_provider.RepeatMode.none:
+        return '点击开启循环播放';
+      case app_provider.RepeatMode.all:
+        return '当前：循环播放列表（点击切换单曲循环）';
+      case app_provider.RepeatMode.one:
+        return '当前：单曲循环（点击关闭循环）';
+    }
   }
 }

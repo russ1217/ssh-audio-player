@@ -16,6 +16,13 @@ import '../services/background_service.dart';
 import '../services/storage_permission_service.dart';
 import '../services/network_monitor_service.dart';
 
+// ✅ 新增：循环播放模式枚举
+enum RepeatMode {
+  none,      // 不循环
+  all,       // 循环播放列表
+  one,       // 单曲循环
+}
+
 class AppProvider extends ChangeNotifier {
   final SSHService _sshService = SSHService();
   final DatabaseService _databaseService = DatabaseService();
@@ -50,6 +57,9 @@ class AppProvider extends ChangeNotifier {
   int _currentIndex = 0;
   MediaFile? _currentPlayingFile; // 当前正在播放的文件
 
+  // ✅ 新增：循环播放模式
+  RepeatMode _repeatMode = RepeatMode.none;
+
   // 后台预下载
   final Map<String, String> _downloadCache = {}; // 文件路径 -> 本地路径
   bool _isPredownloading = false;
@@ -82,6 +92,7 @@ class AppProvider extends ChangeNotifier {
   bool get isPlaying => _isPlaying;
   Duration get position => _position;
   Duration get duration => _duration;
+  RepeatMode get repeatMode => _repeatMode; // ✅ 新增：循环模式getter
 
   AppProvider() {
     _init();
@@ -318,7 +329,7 @@ class AppProvider extends ChangeNotifier {
       // ✅ 关键修复：根据实际播放器状态同步 _isPlaying
       // 但要避免与用户操作产生竞争，只在以下情况更新：
       // 1. 播放器真正开始播放（playing状态）
-      // 2. 播放器完成或停止（completed/idle状态）
+      // 2. 播放完成或停止（completed/idle状态）
       // 3. 其他状态（paused/buffering/loading）不改变 _isPlaying
       
       final wasPlaying = _isPlaying;
@@ -382,7 +393,58 @@ class AppProvider extends ChangeNotifier {
 
   void _onFileComplete() {
     _timerService.incrementPlayedFiles();
-    playNextInPlaylist();
+    
+    // ✅ 新增：根据循环模式处理播放完成后的行为
+    _handlePlaybackCompletion();
+  }
+
+  /// ✅ 新增：处理播放完成后的循环逻辑
+  void _handlePlaybackCompletion() {
+    switch (_repeatMode) {
+      case RepeatMode.none:
+        // 不循环：播放下一曲（如果有）
+        playNextInPlaylist();
+        break;
+        
+      case RepeatMode.all:
+        // 循环播放列表：如果是最后一首，回到第一首
+        if (_currentIndex < _playlist.length - 1) {
+          playNextInPlaylist();
+        } else {
+          // 播放列表结束，回到开头
+          debugPrint('🔄 循环播放列表：回到第一首');
+          _currentIndex = 0;
+          playFromPlaylistIndex(0);
+        }
+        break;
+        
+      case RepeatMode.one:
+        // 单曲循环：重新播放当前曲目
+        debugPrint('🔁 单曲循环：重新播放 ${_currentPlayingFile?.name ?? "未知"}');
+        if (_currentPlayingFile != null) {
+          playMedia(_currentPlayingFile!);
+        }
+        break;
+    }
+  }
+
+  /// ✅ 新增：切换循环模式
+  void toggleRepeatMode() {
+    switch (_repeatMode) {
+      case RepeatMode.none:
+        _repeatMode = RepeatMode.all;
+        debugPrint('🔄 切换到：循环播放列表');
+        break;
+      case RepeatMode.all:
+        _repeatMode = RepeatMode.one;
+        debugPrint('🔁 切换到：单曲循环');
+        break;
+      case RepeatMode.one:
+        _repeatMode = RepeatMode.none;
+        debugPrint('➡️ 切换到：不循环');
+        break;
+    }
+    notifyListeners();
   }
 
   void _onTimerComplete(TimerType type) {
