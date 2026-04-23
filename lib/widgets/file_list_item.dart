@@ -38,16 +38,6 @@ class FileListItem extends StatelessWidget {
               onSelected: (value) => _onMenuSelected(context, value),
               itemBuilder: (context) => [
                 const PopupMenuItem(
-                  value: 'play',
-                  child: Row(
-                    children: [
-                      Icon(Icons.play_arrow),
-                      SizedBox(width: 8),
-                      Text('播放'),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem(
                   value: 'playlist_add',
                   child: Row(
                     children: [
@@ -103,9 +93,6 @@ class FileListItem extends StatelessWidget {
 
   void _onMenuSelected(BuildContext context, String value) {
     switch (value) {
-      case 'play':
-        context.read<AppProvider>().playMedia(file);
-        break;
       case 'playlist_add':
         context.read<AppProvider>().addToPlaylist(file);
         ScaffoldMessenger.of(context).showSnackBar(
