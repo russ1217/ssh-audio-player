@@ -26,234 +26,271 @@ class BottomPlayerBar extends StatelessWidget {
               ),
             ],
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // 进度条
-              Column(
-                children: [
-                  SliderTheme(
-                    data: SliderTheme.of(context).copyWith(
-                      trackHeight: 3,
-                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
-                    ),
-                    child: Slider(
-                      value: provider.position.inMilliseconds.toDouble(),
-                      max: provider.duration.inMilliseconds.toDouble() > 0
-                          ? provider.duration.inMilliseconds.toDouble()
-                          : 1,
-                      onChanged: (value) {
-                        provider.seekTo(Duration(milliseconds: value.toInt()));
-                      },
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          _formatDuration(provider.position),
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                        Text(
-                          _formatDuration(provider.duration),
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              // 播放控制按钮
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  // ✅ 新增：循环模式切换按钮
-                  IconButton(
-                    icon: _buildRepeatIcon(provider.repeatMode),
-                    onPressed: () => provider.toggleRepeatMode(),
-                    tooltip: _getRepeatTooltip(provider.repeatMode),
-                    color: provider.repeatMode != app_provider.RepeatMode.none 
-                        ? Theme.of(context).colorScheme.primary 
-                        : null,
-                  ),
-                  // 上一曲
-                  IconButton(
-                    icon: const Icon(Icons.skip_previous),
-                    onPressed: provider.currentIndex > 0 || provider.repeatMode == app_provider.RepeatMode.all
-                        ? () {
-                            if (provider.currentIndex > 0) {
-                              provider.playPreviousInPlaylist();
-                            } else if (provider.repeatMode == app_provider.RepeatMode.all && provider.playlist.isNotEmpty) {
-                              // 循环模式下，从第一首可以跳到最后一首
-                              provider.playFromPlaylistIndex(provider.playlist.length - 1);
-                            }
-                          }
-                        : null,
-                    tooltip: '上一曲',
-                  ),
-                  // 快退
-                  IconButton(
-                    icon: const Icon(Icons.replay_10),
-                    onPressed: () => provider.seekBackward(const Duration(seconds: 10)),
-                    tooltip: '快退10秒',
-                  ),
-                  // 播放/暂停
-                  FloatingActionButton(
-                    onPressed: () => provider.togglePlayPause(),
-                    mini: true,
-                    child: Icon(
-                      provider.isPlaying ? Icons.pause : Icons.play_arrow,
-                    ),
-                  ),
-                  // 快进
-                  IconButton(
-                    icon: const Icon(Icons.forward_10),
-                    onPressed: () => provider.seekForward(const Duration(seconds: 10)),
-                    tooltip: '快进10秒',
-                  ),
-                  // 下一曲
-                  IconButton(
-                    icon: const Icon(Icons.skip_next),
-                    onPressed: provider.playlist.isNotEmpty &&
-                            (provider.currentIndex < provider.playlist.length - 1 ||
-                                provider.repeatMode == app_provider.RepeatMode.all ||
-                                provider.repeatMode == app_provider.RepeatMode.one)
-                        ? () {
-                            if (provider.currentIndex < provider.playlist.length - 1) {
-                              provider.playNextInPlaylist();
-                            } else if (provider.repeatMode == app_provider.RepeatMode.all ||
-                                provider.repeatMode == app_provider.RepeatMode.one) {
-                              // 循环模式下（全部或单曲），从最后一首可以跳到第一首
-                              provider.playFromPlaylistIndex(0);
-                            }
-                          }
-                        : null,
-                    tooltip: '下一曲',
-                  ),
-                  // 停止
-                  IconButton(
-                    icon: const Icon(Icons.stop),
-                    onPressed: () => provider.stopPlayback(),
-                    tooltip: '停止',
-                  ),
-                ],
-              ),
-              // 定时器指示器和退出按钮 (居右对齐)
-              if (provider.currentPlayingFile != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
+              // ✅ 新增：SSH重连状态提示条
+              if (provider.isWaitingForSSHReconnect)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  color: Colors.orange.shade100,
                   child: Row(
                     children: [
-                      const Spacer(),
-                      // 定时器指示器
-                      StreamBuilder<TimerInfo?>(
-                        stream: provider.countdownUpdateStream,
-                        initialData: provider.sleepTimerRemaining != null 
-                            ? TimerInfo.sleep(remaining: provider.sleepTimerRemaining)
-                            : null,
-                        builder: (context, snapshot) {
-                          final timerInfo = snapshot.data;
-                          if (timerInfo == null) {
-                            return const SizedBox.shrink();
-                          }
-                          
-                          // 根据定时器类型显示不同的内容
-                          Widget indicator;
-                          
-                          if (timerInfo.type == TimerType.sleep) {
-                            // 睡眠定时器：显示倒计时
-                            final remaining = timerInfo.remaining;
-                            if (remaining == null || remaining <= Duration.zero) {
-                              return const SizedBox.shrink();
-                            }
-                            
-                            indicator = Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(
-                                  Icons.timer,
-                                  size: 14,
-                                  color: Colors.orange,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  _formatCountdown(remaining),
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.orange,
-                                  ),
-                                ),
-                              ],
-                            );
-                          } else {
-                            // 文件计数定时器：显示进度
-                            indicator = Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(
-                                  Icons.playlist_play,
-                                  size: 14,
-                                  color: Colors.blue,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  '${timerInfo.played}/${timerInfo.total}',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.blue,
-                                  ),
-                                ),
-                              ],
-                            );
-                          }
-                          
-                          return GestureDetector(
-                            onTap: () {
-                              provider.stopTimer();
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    timerInfo.type == TimerType.sleep
-                                        ? '⏰ 定时关闭已取消'
-                                        : '📁 文件计数定时器已取消',
-                                  ),
-                                  duration: const Duration(seconds: 2),
-                                ),
-                              );
-                            },
-                            child: Container(
-                              margin: const EdgeInsets.only(left: 8),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: timerInfo.type == TimerType.sleep
-                                    ? Colors.orange.withOpacity(0.2)
-                                    : Colors.blue.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: timerInfo.type == TimerType.sleep
-                                      ? Colors.orange
-                                      : Colors.blue,
-                                  width: 1,
-                                ),
-                              ),
-                              child: indicator,
-                            ),
-                          );
-                        },
+                      SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.orange.shade700),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'SSH连接断开，正在尝试重连...',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.orange.shade900,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
                       ),
                     ],
                   ),
                 ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // 进度条
+                    Column(
+                      children: [
+                        SliderTheme(
+                          data: SliderTheme.of(context).copyWith(
+                            trackHeight: 3,
+                            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                            overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                          ),
+                          child: Slider(
+                            value: provider.position.inMilliseconds.toDouble(),
+                            max: provider.duration.inMilliseconds.toDouble() > 0
+                                ? provider.duration.inMilliseconds.toDouble()
+                                : 1,
+                            onChanged: (value) {
+                              provider.seekTo(Duration(milliseconds: value.toInt()));
+                            },
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                _formatDuration(provider.position),
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                              Text(
+                                _formatDuration(provider.duration),
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    // 播放控制按钮
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        // ✅ 新增：循环模式切换按钮
+                        IconButton(
+                          icon: _buildRepeatIcon(provider.repeatMode),
+                          onPressed: () => provider.toggleRepeatMode(),
+                          tooltip: _getRepeatTooltip(provider.repeatMode),
+                          color: provider.repeatMode != app_provider.RepeatMode.none 
+                              ? Theme.of(context).colorScheme.primary 
+                              : null,
+                        ),
+                        // 上一曲
+                        IconButton(
+                          icon: const Icon(Icons.skip_previous),
+                          onPressed: provider.currentIndex > 0 || provider.repeatMode == app_provider.RepeatMode.all
+                              ? () {
+                                  if (provider.currentIndex > 0) {
+                                    provider.playPreviousInPlaylist();
+                                  } else if (provider.repeatMode == app_provider.RepeatMode.all && provider.playlist.isNotEmpty) {
+                                    // 循环模式下，从第一首可以跳到最后一首
+                                    provider.playFromPlaylistIndex(provider.playlist.length - 1);
+                                  }
+                                }
+                              : null,
+                          tooltip: '上一曲',
+                        ),
+                        // 快退
+                        IconButton(
+                          icon: const Icon(Icons.replay_10),
+                          onPressed: () => provider.seekBackward(const Duration(seconds: 10)),
+                          tooltip: '快退10秒',
+                        ),
+                        // 播放/暂停
+                        FloatingActionButton(
+                          onPressed: () => provider.togglePlayPause(),
+                          mini: true,
+                          child: Icon(
+                            provider.isPlaying ? Icons.pause : Icons.play_arrow,
+                          ),
+                        ),
+                        // 快进
+                        IconButton(
+                          icon: const Icon(Icons.forward_10),
+                          onPressed: () => provider.seekForward(const Duration(seconds: 10)),
+                          tooltip: '快进10秒',
+                        ),
+                        // 下一曲
+                        IconButton(
+                          icon: const Icon(Icons.skip_next),
+                          onPressed: provider.playlist.isNotEmpty &&
+                                  (provider.currentIndex < provider.playlist.length - 1 ||
+                                      provider.repeatMode == app_provider.RepeatMode.all ||
+                                      provider.repeatMode == app_provider.RepeatMode.one)
+                              ? () {
+                                  if (provider.currentIndex < provider.playlist.length - 1) {
+                                    provider.playNextInPlaylist();
+                                  } else if (provider.repeatMode == app_provider.RepeatMode.all ||
+                                      provider.repeatMode == app_provider.RepeatMode.one) {
+                                    // 循环模式下（全部或单曲），从最后一首可以跳到第一首
+                                    provider.playFromPlaylistIndex(0);
+                                  }
+                                }
+                              : null,
+                          tooltip: '下一曲',
+                        ),
+                        // 停止
+                        IconButton(
+                          icon: const Icon(Icons.stop),
+                          onPressed: () => provider.stopPlayback(),
+                          tooltip: '停止',
+                        ),
+                      ],
+                    ),
+                    // 定时器指示器和退出按钮 (居右对齐)
+                    if (provider.currentPlayingFile != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Row(
+                          children: [
+                            const Spacer(),
+                            // 定时器指示器
+                            StreamBuilder<TimerInfo?>(
+                              stream: provider.countdownUpdateStream,
+                              initialData: provider.sleepTimerRemaining != null 
+                                  ? TimerInfo.sleep(remaining: provider.sleepTimerRemaining)
+                                  : null,
+                              builder: (context, snapshot) {
+                                final timerInfo = snapshot.data;
+                                if (timerInfo == null) {
+                                  return const SizedBox.shrink();
+                                }
+                                
+                                // 根据定时器类型显示不同的内容
+                                Widget indicator;
+                                
+                                if (timerInfo.type == TimerType.sleep) {
+                                  // 睡眠定时器：显示倒计时
+                                  final remaining = timerInfo.remaining;
+                                  if (remaining == null || remaining <= Duration.zero) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  
+                                  indicator = Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        Icons.timer,
+                                        size: 14,
+                                        color: Colors.orange,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        _formatCountdown(remaining),
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.orange,
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                } else {
+                                  // 文件计数定时器：显示进度
+                                  indicator = Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        Icons.playlist_play,
+                                        size: 14,
+                                        color: Colors.blue,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        '${timerInfo.played}/${timerInfo.total}',
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.blue,
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                }
+                                
+                                return GestureDetector(
+                                  onTap: () {
+                                    provider.stopTimer();
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          timerInfo.type == TimerType.sleep
+                                              ? '⏰ 定时关闭已取消'
+                                              : '📁 文件计数定时器已取消',
+                                        ),
+                                        duration: const Duration(seconds: 2),
+                                      ),
+                                    );
+                                  },
+                                  child: Container(
+                                    margin: const EdgeInsets.only(left: 8),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: timerInfo.type == TimerType.sleep
+                                          ? Colors.orange.withOpacity(0.2)
+                                          : Colors.blue.withOpacity(0.2),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: timerInfo.type == TimerType.sleep
+                                            ? Colors.orange
+                                            : Colors.blue,
+                                        width: 1,
+                                      ),
+                                    ),
+                                    child: indicator,
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ],
           ),
         );

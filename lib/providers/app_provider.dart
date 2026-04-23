@@ -32,6 +32,10 @@ class AppProvider extends ChangeNotifier {
   final StoragePermissionService _permissionService = StoragePermissionService();
   final NetworkMonitorService _networkMonitor = NetworkMonitorService();
 
+  // ✅ 新增：用于广播用户提示消息的Stream
+  final StreamController<String> _messageController = StreamController<String>.broadcast();
+  Stream<String> get messageStream => _messageController.stream;
+
   // ✅ 新增：本地文件模式标志
   bool _isLocalMode = false; // true=本地文件, false=SSH远程文件
 
@@ -93,6 +97,14 @@ class AppProvider extends ChangeNotifier {
   Duration get position => _position;
   Duration get duration => _duration;
   RepeatMode get repeatMode => _repeatMode; // ✅ 新增：循环模式getter
+  bool get isWaitingForSSHReconnect => _isWaitingForSSHReconnect; // ✅ 新增：等待SSH重连状态
+
+  /// ✅ 新增：显示用户提示消息
+  void _showMessage(String message) {
+    if (!_messageController.isClosed) {
+      _messageController.add(message);
+    }
+  }
 
   AppProvider() {
     _init();
@@ -242,6 +254,7 @@ class AppProvider extends ChangeNotifier {
   Duration? _playbackPositionBeforeDisconnect;
   bool _isAutoResuming = false; // 防抖标志
   bool _userManuallyPaused = false; // ✅ 新增：标记用户是否主动暂停（与音频焦点丢失/网络断开区分）
+  bool _isWaitingForSSHReconnect = false; // ✅ 新增：标记是否正在等待SSH重连
 
   /// SSH 断开时保存播放状态
   Future<void> _autoResumePlayback() async {
@@ -253,8 +266,10 @@ class AppProvider extends ChangeNotifier {
     _isAutoResuming = true;
     _shouldResumeAfterReconnect = true;
     _playbackPositionBeforeDisconnect = _audioPlayerService.currentPosition;
-    _userManuallyPaused = false;
-    debugPrint('💾 保存播放进度: ${_playbackPositionBeforeDisconnect}（非用户主动暂停）');
+    _isWaitingForSSHReconnect = true; // ✅ 新增：标记正在等待SSH重连
+    
+    // ✅ 关键修复：不再强制清除 _userManuallyPaused，保持用户意图
+    debugPrint('💾 保存播放进度: ${_playbackPositionBeforeDisconnect}（_userManuallyPaused=$_userManuallyPaused）');
     
     // 停止当前播放（因为 SSH 已断开，流式服务无法工作）
     try {
@@ -272,6 +287,7 @@ class AppProvider extends ChangeNotifier {
     } else {
       debugPrint('❌ 没有活动的 SSH 配置，无法重连');
       _isAutoResuming = false;
+      _isWaitingForSSHReconnect = false;
     }
     
     notifyListeners();
@@ -308,18 +324,21 @@ class AppProvider extends ChangeNotifier {
       _shouldResumeAfterReconnect = false;
       _playbackPositionBeforeDisconnect = null;
       _isAutoResuming = false;
-      // ✅ 恢复播放成功后，清除用户主动暂停标志
+      _isWaitingForSSHReconnect = false; // ✅ 清除等待重连标志
+      
+      // ✅ 关键修复：恢复播放成功后，清除用户主动暂停标志
       _userManuallyPaused = false;
       _isPlaying = true;
       
       // ✅ 更新 MediaSession 播放状态为播放中
       _updateMediaSessionPlaybackState(isPlaying: true);
       
-      debugPrint('✅ 播放已恢复（_userManuallyPaused = false）');
+      debugPrint('✅ 播放已恢复（_userManuallyPaused = false, _isWaitingForSSHReconnect = false）');
     } catch (e) {
       debugPrint('❌ 恢复播放失败: $e');
       _shouldResumeAfterReconnect = false;
       _isAutoResuming = false;
+      _isWaitingForSSHReconnect = false; // ✅ 失败时也清除等待标志
       rethrow;
     }
   }
@@ -1093,9 +1112,14 @@ class AppProvider extends ChangeNotifier {
       } else {
         // ✅ 关键修复：区分本地文件和流式文件的恢复逻辑
         if (_currentPlayingFile != null && !_isLocalMode) {
-          // SSH 流式文件：直接恢复播放，不重新启动流式服务
-          // 流式服务已经在首次播放时启动，暂停/恢复只需控制播放器
-          debugPrint('▶️ SSH 流式文件恢复播放（使用现有流式连接）');
+          // SSH 流式文件：检查SSH连接状态
+          
+          // ✅ 新增：如果正在等待SSH重连，给出明确提示
+          if (_isWaitingForSSHReconnect) {
+            debugPrint('⏳ SSH 正在重连中，请稍候...');
+            _showMessage('SSH正在重连中，请稍候再试');
+            return;
+          }
           
           // ✅ 关键修复：在恢复播放前更新 MediaSession 元数据（车机显示曲目名称）
           _updateMediaSessionMetadata(_currentPlayingFile!);
@@ -1104,8 +1128,14 @@ class AppProvider extends ChangeNotifier {
           final sshConnected = await _ensureSSHConnection();
           if (!sshConnected) {
             debugPrint('❌ SSH 连接失败，无法恢复播放');
+            // ✅ 新增：给用户明确的反馈
+            _showMessage('SSH连接失败，请检查网络后重试');
             return;
           }
+          }
+          
+          // SSH已连接，尝试恢复播放
+          debugPrint('▶️ SSH 流式文件恢复播放（使用现有流式连接）');
           
           // ✅ 直接调用 play() 恢复播放，保持当前位置
           await _audioPlayerService.play();
@@ -1132,7 +1162,8 @@ class AppProvider extends ChangeNotifier {
         _isPlaying = true;
         // ✅ 用户主动播放，清除标志
         _userManuallyPaused = false;
-        debugPrint('▶️ 用户主动播放，_isPlaying = true, _userManuallyPaused = false');
+        _isWaitingForSSHReconnect = false; // ✅ 用户主动播放，清除等待重连标志
+        debugPrint('▶️ 用户主动播放，_isPlaying = true, _userManuallyPaused = false, _isWaitingForSSHReconnect = false');
         
         // ✅ 更新 MediaSession 播放状态为播放中
         _updateMediaSessionPlaybackState(isPlaying: true);
