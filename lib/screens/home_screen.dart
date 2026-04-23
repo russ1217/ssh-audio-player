@@ -515,7 +515,7 @@ class SettingsScreen extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.info),
             title: const Text('关于'),
-            subtitle: const Text('SSH Player for Russ v1.0.0'),
+            subtitle: const Text('SSH Player for Russ v1.1.2'),
           ),
         ],
       ),
