@@ -98,6 +98,7 @@ class AppProvider extends ChangeNotifier {
   Duration get duration => _duration;
   RepeatMode get repeatMode => _repeatMode; // ✅ 新增：循环模式getter
   bool get isWaitingForSSHReconnect => _isWaitingForSSHReconnect; // ✅ 新增：等待SSH重连状态
+  bool get audioFocusLost => _audioFocusLost; // ✅ 新增：音频焦点丢失状态
 
   /// ✅ 新增：显示用户提示消息
   void _showMessage(String message) {
@@ -175,11 +176,12 @@ class AppProvider extends ChangeNotifier {
         
         // 如果需要恢复播放
         if (_shouldResumeAfterReconnect && _currentPlayingFile != null) {
-          // ✅ 关键修复：如果用户主动暂停，不要自动恢复播放
-          if (_userManuallyPaused) {
-            debugPrint('⚠️ 用户已主动暂停，网络恢复后不自动恢复播放');
+          // ✅ 关键修复：如果用户主动暂停或音频焦点丢失，不要自动恢复播放
+          if (_userManuallyPaused || _audioFocusLost) {
+            debugPrint('⚠️ 用户已主动暂停或音频焦点丢失，网络恢复后不自动恢复播放');
             _shouldResumeAfterReconnect = false;
             _userManuallyPaused = false;
+            _audioFocusLost = false; // ✅ 清除音频焦点丢失标志
           } else {
             debugPrint('🔄 网络恢复，准备恢复播放...');
             await Future.delayed(const Duration(milliseconds: 500));
@@ -262,6 +264,7 @@ class AppProvider extends ChangeNotifier {
   bool _isAutoResuming = false; // 防抖标志
   bool _userManuallyPaused = false; // ✅ 新增：标记用户是否主动暂停（与音频焦点丢失/网络断开区分）
   bool _isWaitingForSSHReconnect = false; // ✅ 新增：标记是否正在等待SSH重连
+  bool _audioFocusLost = false; // ✅ 新增：标记是否因音频焦点丢失而暂停
 
   /// SSH 断开时保存播放状态
   Future<void> _autoResumePlayback() async {
@@ -317,6 +320,14 @@ class AppProvider extends ChangeNotifier {
     // ✅ 关键修复：如果是本地模式，不进行任何恢复操作
     if (_isLocalMode) {
       debugPrint('ℹ️ 本地模式，跳过SSH恢复播放逻辑');
+      _shouldResumeAfterReconnect = false;
+      _isAutoResuming = false;
+      return;
+    }
+    
+    // ✅ 关键修复：如果音频焦点已丢失，不要自动恢复播放
+    if (_audioFocusLost) {
+      debugPrint('⚠️ 音频焦点已丢失，SSH重连后不自动恢复播放');
       _shouldResumeAfterReconnect = false;
       _isAutoResuming = false;
       return;
@@ -1243,8 +1254,9 @@ class AppProvider extends ChangeNotifier {
       if (_isPlaying) {
         await _audioPlayerService.pause();
         _isPlaying = false;
-        // ✅ 关键修复：系统强制暂停，不设置_userManuallyPaused
-        debugPrint('⏸️ 系统强制暂停，_isPlaying = false, _userManuallyPaused 保持不变($_userManuallyPaused)');
+        // ✅ 关键修复：系统强制暂停，标记音频焦点丢失
+        _audioFocusLost = true;
+        debugPrint('⏸️ 系统强制暂停，_isPlaying = false, _audioFocusLost = true');
         
         // ✅ 更新 MediaSession 播放状态为暂停
         _updateMediaSessionPlaybackState(isPlaying: false);

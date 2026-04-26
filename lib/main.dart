@@ -90,6 +90,13 @@ void _initializeMediaControlListener() {
             
             // ✅ 严格检查1：只有在未播放且有文件时才考虑播放
             if (!_globalAppProvider!.isPlaying && _globalAppProvider!.currentPlayingFile != null) {
+              // ✅ 关键修复：如果因音频焦点丢失而暂停，不要自动恢复播放
+              // 必须由用户主动点击播放按钮才能恢复
+              if (_globalAppProvider!.audioFocusLost) {
+                debugPrint('⚠️ 音频焦点已丢失，忽略自动播放命令（需用户手动恢复）');
+                return;
+              }
+              
               // ✅ 严格检查2：如果用户主动暂停，需要判断这个play命令的来源
               // - 如果是用户通过UI（通知栏、蓝牙设备）点击播放 → 应该执行
               // - 如果是系统误触发（其他应用退出导致） → 应该忽略
