@@ -343,6 +343,7 @@ class AppProvider extends ChangeNotifier {
       debugPrint('🔄 正在恢复播放: ${_currentPlayingFile!.name}');
       
       final file = _currentPlayingFile!;
+      final restorePosition = _playbackPositionBeforeDisconnect;
       
       // ✅ 更新 MediaSession 元数据（蓝牙设备显示曲目名称）
       _updateMediaSessionMetadata(file);
@@ -351,12 +352,52 @@ class AppProvider extends ChangeNotifier {
       debugPrint('🌐 重新启动流式服务...');
       await _playMediaStreaming(file);
 
-      // 恢复播放进度
-      if (_playbackPositionBeforeDisconnect != null && _playbackPositionBeforeDisconnect! > Duration.zero) {
-        // 等待播放器加载完成
-        await Future.delayed(const Duration(milliseconds: 500));
-        await _audioPlayerService.seek(_playbackPositionBeforeDisconnect!);
-        debugPrint('⏩ 恢复到进度: $_playbackPositionBeforeDisconnect');
+      // ✅ 关键修复：恢复播放进度 - 等待播放器开始播放后，暂停->Seek->再播放
+      if (restorePosition != null && restorePosition > Duration.zero) {
+        debugPrint('⏳ 等待播放器加载完成，准备恢复到进度: $restorePosition');
+        
+        // 等待播放器状态变为 playing（说明已经开始播放）
+        bool isPlayingState = false;
+        int waitCount = 0;
+        const maxWaitCount = 20; // 最多等待6秒（20 * 300ms）
+        
+        while (!isPlayingState && waitCount < maxWaitCount) {
+          await Future.delayed(const Duration(milliseconds: 300));
+          
+          final currentState = _audioPlayerService.playbackState;
+          debugPrint('📊 等待播放状态 ($waitCount/$maxWaitCount): $currentState, 位置=${_audioPlayerService.currentPosition}');
+          
+          if (currentState == PlayerState.playing) {
+            isPlayingState = true;
+            debugPrint('✅ 播放器已开始播放');
+          }
+          
+          waitCount++;
+        }
+        
+        if (isPlayingState) {
+          // ✅ 关键步骤：先暂停播放，避免从头播放
+          debugPrint('⏸️ 暂停播放，准备seek...');
+          await _audioPlayerService.pause();
+          await Future.delayed(const Duration(milliseconds: 200));
+          
+          // 执行seek到断点位置
+          debugPrint('⏩ 执行seek到: $restorePosition');
+          await _audioPlayerService.seek(restorePosition);
+          await Future.delayed(const Duration(milliseconds: 300));
+          
+          // 验证seek是否成功
+          final actualPosition = _audioPlayerService.currentPosition;
+          debugPrint('📍 Seek后实际位置: $actualPosition (目标: $restorePosition)');
+          
+          // ✅ 重新播放
+          debugPrint('▶️ 从断点位置恢复播放');
+          await _audioPlayerService.play();
+          
+          debugPrint('✅ 成功恢复到进度: $restorePosition');
+        } else {
+          debugPrint('❌ 播放器未在预期时间内开始播放，可能已失败');
+        }
       }
 
       _shouldResumeAfterReconnect = false;
