@@ -1,7 +1,7 @@
 name: ssh_audio_player
 description: 一个通过 SSH 访问服务器播放音频的播放器应用
 publish_to: 'none'
-version: 1.1.2+1
+version: 1.1.5+1
 
 environment:
   sdk: '>=3.2.0 <4.0.0'
