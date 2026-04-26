@@ -352,7 +352,7 @@ class AppProvider extends ChangeNotifier {
       debugPrint('🌐 重新启动流式服务...');
       await _playMediaStreaming(file);
 
-      // ✅ 关键修复：恢复播放进度 - 等待播放器开始播放后，暂停->Seek->再播放
+      // ✅ 关键修复：恢复播放进度 - 等待播放器加载完成后立即暂停，seek后再播放
       if (restorePosition != null && restorePosition > Duration.zero) {
         debugPrint('⏳ 等待播放器加载完成，准备恢复到进度: $restorePosition');
         
@@ -364,10 +364,11 @@ class AppProvider extends ChangeNotifier {
         while (!isPlayingState && waitCount < maxWaitCount) {
           await Future.delayed(const Duration(milliseconds: 300));
           
-          final currentState = _audioPlayerService.playbackState;
-          debugPrint('📊 等待播放状态 ($waitCount/$maxWaitCount): $currentState, 位置=${_audioPlayerService.currentPosition}');
+          // ✅ 修复：使用 isPlaying 属性而不是 playbackState
+          final isCurrentlyPlaying = _audioPlayerService.isPlaying;
+          debugPrint('📊 等待播放状态 ($waitCount/$maxWaitCount): isPlaying=$isCurrentlyPlaying, 位置=${_audioPlayerService.currentPosition}');
           
-          if (currentState == PlayerState.playing) {
+          if (isCurrentlyPlaying) {
             isPlayingState = true;
             debugPrint('✅ 播放器已开始播放');
           }
