@@ -84,7 +84,7 @@ void _initializeMediaControlListener() {
         
         // ✅ 关键修复：如果正在恢复播放过程中，忽略所有外部媒体控制命令
         // 这是为了避免在恢复播放的短暂时间窗口内被外部命令中断
-        if (_globalAppProvider.isRestoringPlayback) {
+        if (_globalAppProvider!.isRestoringPlayback) {
           debugPrint('⚠️ 正在恢复播放中（_isRestoringPlayback=true），忽略外部媒体控制命令: $action');
           return;
         }

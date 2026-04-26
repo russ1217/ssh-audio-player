@@ -341,8 +341,6 @@ class AppProvider extends ChangeNotifier {
       return;
     }
     
-    }
-    
     if (_currentPlayingFile == null) {
       _shouldResumeAfterReconnect = false;
       _isAutoResuming = false;
