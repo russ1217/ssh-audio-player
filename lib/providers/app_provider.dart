@@ -1149,13 +1149,190 @@ class AppProvider extends ChangeNotifier {
         _isPlaying = false;
         // ✅ 关键修复：用户主动暂停，设置标志
         _userManuallyPaused = true;
-        debugPrint('⏸️ 用户主动暂停，_isPlaying = false, _userManuallyPaused = true');
+        _shouldResumeAfterReconnect = false; // ✅ 用户主动暂停，清除自动恢复标志
+        debugPrint('⏸️ 用户主动暂停，_isPlaying = false, _userManuallyPaused = true, _shouldResumeAfterReconnect = false');
         
         // ✅ 更新 MediaSession 播放状态为暂停
         _updateMediaSessionPlaybackState(isPlaying: false);
       } else {
         // ✅ 关键修复：区分本地文件和流式文件的恢复逻辑
         if (_currentPlayingFile != null && !_isLocalMode) {
+          await _playMediaStreaming(_currentPlayingFile!);
+        } else if (_currentPlayingFile != null) {
+          await _audioPlayerService.playFile(_currentPlayingFile!.path, isVideo: _currentPlayingFile!.isVideo);
+        }
+        _isPlaying = true;
+        _shouldResumeAfterReconnect = true; // ✅ 用户主动恢复，设置自动恢复标志
+        debugPrint('▶️ 用户主动恢复，_isPlaying = true, _shouldResumeAfterReconnect = true');
+        
+        // ✅ 更新 MediaSession 播放状态为播放中
+        _updateMediaSessionPlaybackState(isPlaying: true);
+      }
+    } catch (e) {
+      debugPrint('❌ 切换播放/暂停失败: $e');
+    }
+  }
+
+  /// ✅ 系统强制暂停（不设置用户主动暂停标志）
+  /// 用于音频焦点丢失、电话等场景
+  Future<void> pauseBySystem() async {
+    try {
+      if (_isPlaying) {
+        await _audioPlayerService.pause();
+        _isPlaying = false;
+        // ✅ 关键修复：系统强制暂停，标记音频焦点丢失
+        _audioFocusLost = true;
+        _shouldResumeAfterReconnect = false; // ✅ 系统强制暂停，清除自动恢复标志
+        debugPrint('⏸️ 系统强制暂停，_isPlaying = false, _audioFocusLost = true, _shouldResumeAfterReconnect = false');
+        
+        // ✅ 更新 MediaSession 播放状态为暂停
+        _updateMediaSessionPlaybackState(isPlaying: false);
+      }
+    } catch (e) {
+      debugPrint('❌ 系统强制暂停失败: $e');
+    }
+  }
+
+  Future<void> stop() async {
+    try {
+      await _audioPlayerService.stop();
+      _isPlaying = false;
+      _shouldResumeAfterReconnect = false; // ✅ 停止播放时清除自动恢复标志
+      debugPrint('⏹️ 停止播放，_isPlaying = false, _shouldResumeAfterReconnect = false');
+      
+      // ✅ 更新 MediaSession 播放状态为暂停
+      _updateMediaSessionPlaybackState(isPlaying: false);
+    } catch (e) {
+      debugPrint('❌ 停止播放失败: $e');
+    }
+  }
+
+  Future<void> seek(Duration position) async {
+    try {
+      await _audioPlayerService.seek(position);
+      debugPrint('⏩ 跳转到: $position');
+    } catch (e) {
+      debugPrint('❌ 跳转失败: $e');
+    }
+  }
+
+  Future<void> playNextInPlaylist() async {
+    if (_currentIndex < _playlist.length - 1) {
+      _currentIndex++;
+      final nextFile = _playlist[_currentIndex];
+      await playMedia(nextFile, syncPlaylistIndex: false);
+    } else {
+      debugPrint('⚠️ 已经是最后一首，无法播放下一首');
+    }
+  }
+
+  Future<void> playPreviousInPlaylist() async {
+    if (_currentIndex > 0) {
+      _currentIndex--;
+      final previousFile = _playlist[_currentIndex];
+      await playMedia(previousFile, syncPlaylistIndex: false);
+    } else {
+      debugPrint('⚠️ 已经是第一首，无法播放上一首');
+    }
+  }
+
+  Future<void> playFromPlaylistIndex(int index) async {
+    if (index >= 0 && index < _playlist.length) {
+      _currentIndex = index;
+      final file = _playlist[_currentIndex];
+      await playMedia(file, syncPlaylistIndex: false);
+    } else {
+      debugPrint('⚠️ 索引超出范围，无法播放');
+    }
+  }
+
+  Future<void> loadPlaylist(String playlistId) async {
+    try {
+      _isLoading = true;
+      notifyListeners();
+
+      final playlist = await _databaseService.getPlaylist(playlistId);
+      if (playlist != null) {
+        _currentPlaylistId = playlistId;
+        _playlist = playlist.files;
+        _currentIndex = 0;
+        _currentPlayingFile = null;
+        _isPlaying = false;
+        _shouldResumeAfterReconnect = false; // ✅ 加载播放列表时清除自动恢复标志
+        debugPrint('🔄 加载播放列表: ${playlist.name}，共 ${_playlist.length} 个项目');
+      }
+    } catch (e) {
+      debugPrint('❌ 加载播放列表失败: $e');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> savePlaylist(String playlistId, List<MediaFile> files) async {
+    try {
+      await _databaseService.updatePlaylist(playlistId, files);
+      debugPrint('💾 保存播放列表: $playlistId，共 ${files.length} 个项目');
+    } catch (e) {
+      debugPrint('❌ 保存播放列表失败: $e');
+    }
+  }
+
+  Future<void> deletePlaylist(String playlistId) async {
+    try {
+      await _databaseService.deletePlaylist(playlistId);
+      debugPrint('🗑️ 删除播放列表: $playlistId');
+    } catch (e) {
+      debugPrint('❌ 删除播放列表失败: $e');
+    }
+  }
+
+  Future<void> _ensureForegroundServiceStarted() async {
+    await BackgroundService.start();
+  }
+
+  Future<void> _saveCurrentPlaybackPosition() async {
+    if (_currentPlayingFile != null) {
+      await _databaseService.savePlaybackPosition(
+        _currentPlayingFile!.path,
+        _audioPlayerService.currentPosition,
+      );
+      debugPrint('💾 保存播放进度: ${_audioPlayerService.currentPosition}');
+    }
+  }
+
+  Future<void> _updateMediaSessionMetadata(MediaFile file) async {
+    await BackgroundService.updateMetadata(
+      title: file.name,
+      artist: '',
+      album: '',
+      duration: file.duration,
+      artwork: null,
+    );
+  }
+
+  Future<void> _updateMediaSessionPlaybackState({required bool isPlaying}) async {
+    await BackgroundService.updatePlaybackState(
+      isPlaying: isPlaying,
+      position: _audioPlayerService.currentPosition,
+      duration: _audioPlayerService.duration,
+    );
+  }
+
+  Future<void> _updateMediaSessionPosition() async {
+    await BackgroundService.updatePlaybackState(
+      isPlaying: _audioPlayerService.isPlaying,
+      position: _audioPlayerService.currentPosition,
+      duration: _audioPlayerService.duration,
+    );
+  }
+
+  Future<File> _createTempFile(List<int> bytes, String name) async {
+    final tempDir = await getTemporaryDirectory();
+    final tempFile = File('${tempDir.path}/$name');
+    await tempFile.writeAsBytes(bytes);
+    return tempFile;
+  }
           // SSH 流式文件：检查SSH连接状态
           
           // ✅ 新增：如果正在等待SSH重连，给出明确提示
