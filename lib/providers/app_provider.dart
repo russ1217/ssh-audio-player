@@ -99,6 +99,7 @@ class AppProvider extends ChangeNotifier {
   RepeatMode get repeatMode => _repeatMode; // ✅ 新增：循环模式getter
   bool get isWaitingForSSHReconnect => _isWaitingForSSHReconnect; // ✅ 新增：等待SSH重连状态
   bool get audioFocusLost => _audioFocusLost; // ✅ 新增：音频焦点丢失状态
+  bool get isRestoringPlayback => _isRestoringPlayback; // ✅ 新增：是否正在恢复播放
 
   /// ✅ 新增：显示用户提示消息
   void _showMessage(String message) {
@@ -265,6 +266,7 @@ class AppProvider extends ChangeNotifier {
   bool _userManuallyPaused = false; // ✅ 新增：标记用户是否主动暂停（与音频焦点丢失/网络断开区分）
   bool _isWaitingForSSHReconnect = false; // ✅ 新增：标记是否正在等待SSH重连
   bool _audioFocusLost = false; // ✅ 新增：标记是否因音频焦点丢失而暂停
+  bool _isRestoringPlayback = false; // ✅ 新增：标记是否正在恢复播放过程中（此期间应忽略外部媒体控制）
 
   /// SSH 断开时保存播放状态
   Future<void> _autoResumePlayback() async {
@@ -340,6 +342,10 @@ class AppProvider extends ChangeNotifier {
     }
 
     try {
+      // ✅ 关键修复：标记正在恢复播放，此期间忽略外部媒体控制命令
+      _isRestoringPlayback = true;
+      debugPrint('🔄 开始恢复播放流程（_isRestoringPlayback = true）');
+      
       debugPrint('🔄 正在恢复播放: ${_currentPlayingFile!.name}');
       
       final file = _currentPlayingFile!;
@@ -410,6 +416,10 @@ class AppProvider extends ChangeNotifier {
       _userManuallyPaused = false;
       _isPlaying = true;
       
+      // ✅ 关键修复：恢复播放完成，允许接收外部媒体控制命令
+      _isRestoringPlayback = false;
+      debugPrint('✅ 恢复播放完成（_isRestoringPlayback = false）');
+      
       // ✅ 更新 MediaSession 播放状态为播放中
       _updateMediaSessionPlaybackState(isPlaying: true);
       
@@ -419,6 +429,7 @@ class AppProvider extends ChangeNotifier {
       _shouldResumeAfterReconnect = false;
       _isAutoResuming = false;
       _isWaitingForSSHReconnect = false; // ✅ 失败时也清除等待标志
+      _isRestoringPlayback = false; // ✅ 失败时也要清除标志
       rethrow;
     }
   }
