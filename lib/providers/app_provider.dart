@@ -319,6 +319,12 @@ class AppProvider extends ChangeNotifier {
 
   /// SSH 重连成功后恢复播放
   Future<void> _resumePlaybackAfterReconnect() async {
+    // ✅ 关键修复：防止重复调用（SSH心跳检测和handleNetworkReconnected可能同时触发）
+    if (_isRestoringPlayback) {
+      debugPrint('⚠️ 正在恢复播放中，忽略重复的恢复请求');
+      return;
+    }
+    
     // ✅ 关键修复：如果是本地模式，不进行任何恢复操作
     if (_isLocalMode) {
       debugPrint('ℹ️ 本地模式，跳过SSH恢复播放逻辑');
@@ -333,6 +339,8 @@ class AppProvider extends ChangeNotifier {
       _shouldResumeAfterReconnect = false;
       _isAutoResuming = false;
       return;
+    }
+    
     }
     
     if (_currentPlayingFile == null) {
