@@ -1021,8 +1021,11 @@ class AppProvider extends ChangeNotifier {
         _isPlaying = true;
         debugPrint('✅ 播放完成设置: _currentIndex=$_currentIndex');
         
-        // ✅ 更新播放状态为播放中
+        // ✅ 关键修复：必须先更新 playbackState 为播放中，再更新 metadata
+        // 这样可以确保 Native 层的 updateMediaMetadata() 读取到正确的 isCurrentlyPlaying=true
+        // 从而设置正确的 PlaybackState，避免车机初始播放时不显示曲目
         _updateMediaSessionPlaybackState(isPlaying: true);
+        _updateMediaSessionMetadata(file);
         
         // ✅ 关键修复：由于统一使用流式播放，不再需要预下载
         // 流式播放会边下边播，预下载已无意义
