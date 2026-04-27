@@ -11,6 +11,8 @@ import android.graphics.BitmapFactory
 import android.media.MediaMetadata
 import android.util.Log
 import androidx.core.app.NotificationCompat
+// ✅ 关键修复：添加 MediaStyle 导入以支持车机显示
+import androidx.media.app.NotificationCompat as MediaNotificationCompat
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
@@ -473,7 +475,7 @@ class BackgroundPlayerService : Service() {
             )
         }
         
-        // 恢复使用标准的 NotificationCompat，移除 MediaStyle 依赖
+        // ✅ 关键修复：恢复使用 MediaStyle 以支持车机显示播放条目
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(currentTitle)
             .setContentText("SSH Player - Playing")
@@ -481,7 +483,7 @@ class BackgroundPlayerService : Service() {
             .setContentIntent(pendingIntent)
             .setOngoing(true) // 设置为持续通知，防止被清除
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC) // 锁屏可见
-            // 添加媒体控制按钮
+            // ✅ 添加媒体控制按钮
             .addAction(
                 android.R.drawable.ic_media_previous,
                 "Previous",
@@ -497,6 +499,12 @@ class BackgroundPlayerService : Service() {
                 android.R.drawable.ic_menu_close_clear_cancel,
                 "Stop",
                 stopIntent
+            )
+            // ✅ 关键：设置 MediaStyle 并关联 MediaSession，这是车机显示播放条目的必要条件
+            .setStyle(
+                MediaNotificationCompat.MediaStyle()
+                    .setShowActionsInCompactView(0, 1, 2) // 在紧凑视图中显示前3个按钮
+                    .setMediaSession(mediaSession?.sessionToken) // 关联 MediaSession
             )
     }
     
