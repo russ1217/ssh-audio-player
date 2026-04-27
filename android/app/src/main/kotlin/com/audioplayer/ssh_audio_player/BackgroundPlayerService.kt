@@ -559,6 +559,29 @@ class BackgroundPlayerService : Service() {
                 session.setMetadata(metadata)
                 println("✅ MediaSessionCompat 元数据已设置: $title")
                 
+                // ✅ 关键修复：更新元数据后，立即更新 PlaybackState，确保车机能正确识别
+                // 这样可以保证 metadata 和 playbackState 同步，避免车机读取时状态不一致
+                val currentState = if (isCurrentlyPlaying) {
+                    PlaybackStateCompat.STATE_PLAYING
+                } else {
+                    PlaybackStateCompat.STATE_PAUSED
+                }
+                
+                val playbackState = PlaybackStateCompat.Builder()
+                    .setActions(
+                        PlaybackStateCompat.ACTION_PLAY or
+                        PlaybackStateCompat.ACTION_PAUSE or
+                        PlaybackStateCompat.ACTION_STOP or
+                        PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
+                        PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
+                        PlaybackStateCompat.ACTION_SEEK_TO
+                    )
+                    .setState(currentState, 0, 1.0f)
+                    .build()
+                
+                session.setPlaybackState(playbackState)
+                println("📻 MediaSessionCompat PlaybackState 已同步更新: state=$currentState")
+                
                 // ✅ 同时更新通知
                 println("🔔 准备更新通知...")
                 updateNotification(title, isCurrentlyPlaying)
