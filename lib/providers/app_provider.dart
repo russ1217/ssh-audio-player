@@ -314,6 +314,10 @@ class AppProvider extends ChangeNotifier {
         debugPrint('⏩ 恢复到断线前的进度: $_playbackPositionBeforeDisconnect');
         _playbackPositionBeforeDisconnect = null; // 清除保存的进度
       }
+      
+      // ✅ 关键修复：恢复成功后清除_isAutoResuming标志，允许下次断开时重新设置
+      _isAutoResuming = false;
+      debugPrint('✅ 恢复播放成功，清除_isAutoResuming标志');
     } catch (e) {
       debugPrint('⚠️ 恢复播放异常: $e');
       _isAutoResuming = false;
