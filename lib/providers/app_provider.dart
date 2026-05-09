@@ -359,9 +359,17 @@ class AppProvider extends ChangeNotifier {
       final wasPlaying = _isPlaying;
       
       if (state == PlayerState.playing) {
-        // 播放器真正开始播放
-        _isPlaying = true;
-        debugPrint('📊 播放器状态变化（开始播放）: $state, isPlaying: $wasPlaying → $_isPlaying');
+        // ✅ 关键修复：如果用户主动暂停，即使播放器状态变为playing，也要立即暂停
+        if (_userManuallyPaused) {
+          debugPrint('⚠️ [防御性编程] 检测到播放器自动恢复播放，但用户已暂停，立即暂停');
+          _audioPlayerService.pause();
+          _isPlaying = false;
+          debugPrint('📊 播放器状态变化（用户暂停保护）: $state, isPlaying: $wasPlaying → $_isPlaying (保持暂停)');
+        } else {
+          // 播放器真正开始播放
+          _isPlaying = true;
+          debugPrint('📊 播放器状态变化（开始播放）: $state, isPlaying: $wasPlaying → $_isPlaying');
+        }
       } else if (state == PlayerState.completed || state == PlayerState.idle) {
         // 播放完成或停止
         _isPlaying = false;
