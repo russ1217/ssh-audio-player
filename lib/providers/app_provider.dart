@@ -301,10 +301,30 @@ class AppProvider extends ChangeNotifier {
       
       // ✅ 关键修复：如果有保存的播放位置，恢复到该位置
       if (_playbackPositionBeforeDisconnect != null && _playbackPositionBeforeDisconnect! > Duration.zero) {
-        // 等待播放器初始化完成
+        debugPrint('⏳ 等待播放器初始化...');
+        // ✅ 重要：增加等待时间，确保播放器完全初始化
+        await Future.delayed(const Duration(milliseconds: 1500));
+        
+        // ✅ 关键修复：先暂停播放器，再seek，避免从头播放
+        debugPrint('⏸️ 暂停播放器，准备seek...');
+        await _audioPlayerService.pause();
         await Future.delayed(const Duration(milliseconds: 500));
+        
+        // 执行seek操作
+        debugPrint('⏩ 正在seek到断线前的进度: $_playbackPositionBeforeDisconnect...');
         await _audioPlayerService.seek(_playbackPositionBeforeDisconnect!);
-        debugPrint('⏩ 恢复到断线前的进度: $_playbackPositionBeforeDisconnect');
+        debugPrint('✅ seek操作已完成');
+        
+        // ✅ 验证seek是否成功
+        final currentPosition = _audioPlayerService.currentPosition;
+        debugPrint('📍 当前播放位置: $currentPosition (期望: $_playbackPositionBeforeDisconnect)');
+        
+        // ✅ 等待seek完成后再开始播放
+        await Future.delayed(const Duration(milliseconds: 500));
+        debugPrint('▶️ 从断点位置开始播放...');
+        await _audioPlayerService.play();
+        debugPrint('✅ 已从断点位置恢复播放');
+        
         _playbackPositionBeforeDisconnect = null; // 清除保存的进度
       }
     } catch (e) {
