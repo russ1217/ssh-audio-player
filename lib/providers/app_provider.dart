@@ -357,22 +357,6 @@ class AppProvider extends ChangeNotifier {
       notifyListeners();
     });
 
-    _audioPlayerService.positionStream.listen((position) {
-        // 播放完成或停止
-        _isPlaying = false;
-        debugPrint('📊 播放器状态变化（完成/停止）: $state, isPlaying: $wasPlaying → $_isPlaying');
-      } else {
-        // paused/buffering/loading 状态不改变 _isPlaying
-        debugPrint('📊 播放器状态（保持_isPlaying不变）: $state, isPlaying: $_isPlaying');
-      }
-      
-      _lastPositionForStateCheck = _audioPlayerService.currentPosition;
-      
-      // ✅ 更新 MediaSession 播放状态
-      _updateMediaSessionPlaybackState(isPlaying: _isPlaying);
-      
-      notifyListeners();
-    });
 
     _audioPlayerService.positionStream.listen((position) {
       _position = position;
