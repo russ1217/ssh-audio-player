@@ -240,16 +240,25 @@ class AppProvider extends ChangeNotifier {
 
   /// SSH 断开时保存播放状态
   Future<void> _autoResumePlayback() async {
+    debugPrint('🔍 _autoResumePlayback 被调用，当前 _isAutoResuming=$_isAutoResuming, _playbackPositionBeforeDisconnect=$_playbackPositionBeforeDisconnect');
+    
     if (_isAutoResuming) {
-      debugPrint('⚠️ 已经在自动恢复中，忽略重复请求');
+      debugPrint('⚠️ 已经在自动恢复中，忽略重复请求，保留位置: $_playbackPositionBeforeDisconnect');
       return;
     }
     
     _isAutoResuming = true;
     _shouldResumeAfterReconnect = true;
-    _playbackPositionBeforeDisconnect = _audioPlayerService.currentPosition;
-    // ✅ 关键修复：不要清除 _userManuallyPaused，保留用户的暂停意图
-    debugPrint('💾 保存播放进度: ${_playbackPositionBeforeDisconnect}，用户手动暂停状态: $_userManuallyPaused');
+    
+    // ✅ 关键修复：只在播放器仍在播放时更新位置，避免使用idle状态的错误位置
+    final currentPosition = _audioPlayerService.currentPosition;
+    debugPrint('📍 当前播放器位置: $currentPosition');
+    if (currentPosition != null && currentPosition > Duration.zero) {
+      _playbackPositionBeforeDisconnect = currentPosition;
+      debugPrint('💾 保存播放进度: $_playbackPositionBeforeDisconnect，用户手动暂停状态: $_userManuallyPaused');
+    } else {
+      debugPrint('⚠️ 播放器已停止或位置无效 ($currentPosition)，保留之前的断点位置: $_playbackPositionBeforeDisconnect');
+    }
     
     // 停止当前播放（因为 SSH 已断开，流式服务无法工作）
     try {
