@@ -266,7 +266,7 @@ class AppProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// SSH 重连成功后恢复播放
+  /// ✅ SSH重连后恢复播放（关键修复：恢复到断点位置）
   Future<void> _resumePlaybackAfterReconnect() async {
     if (_currentPlayingFile == null) {
       _shouldResumeAfterReconnect = false;
@@ -285,6 +285,15 @@ class AppProvider extends ChangeNotifier {
       // ✅ 关键修复：统一使用流式播放，不再区分文件大小
       debugPrint('🌐 重新启动流式服务...');
       await _playMediaStreaming(file);
+      
+      // ✅ 关键修复：如果有保存的播放位置，恢复到该位置
+      if (_playbackPositionBeforeDisconnect != null && _playbackPositionBeforeDisconnect! > Duration.zero) {
+        // 等待播放器初始化完成
+        await Future.delayed(const Duration(milliseconds: 500));
+        await _audioPlayerService.seek(_playbackPositionBeforeDisconnect!);
+        debugPrint('⏩ 恢复到断线前的进度: $_playbackPositionBeforeDisconnect');
+        _playbackPositionBeforeDisconnect = null; // 清除保存的进度
+      }
     } catch (e) {
       debugPrint('⚠️ 恢复播放异常: $e');
       _isAutoResuming = false;
