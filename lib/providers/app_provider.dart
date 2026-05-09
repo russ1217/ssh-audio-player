@@ -216,10 +216,16 @@ class AppProvider extends ChangeNotifier {
         }
       } else {
         debugPrint('✅ SSH 连接已恢复');
-        // SSH 重连成功后，如果之前正在播放，自动恢复播放
         if (_shouldResumeAfterReconnect) {
-          debugPrint('🔄 心跳检测：SSH 已恢复，自动恢复播放...');
-          _resumePlaybackAfterReconnect();
+          // ✅ 关键修复：如果用户主动暂停，不要自动恢复播放
+          if (_userManuallyPaused) {
+            debugPrint('⚠️ 用户已主动暂停，SSH重连后不自动恢复播放，保留暂停状态');
+            _shouldResumeAfterReconnect = false;
+            // ✅ 关键修复：不清除 _userManuallyPaused，保留用户的暂停意图
+          } else {
+            debugPrint('🔄 心跳检测：SSH 已恢复，自动恢复播放...');
+            _resumePlaybackAfterReconnect();
+          }
         }
       }
       notifyListeners();
@@ -268,6 +274,13 @@ class AppProvider extends ChangeNotifier {
 
   /// ✅ SSH重连后恢复播放（关键修复：恢复到断点位置）
   Future<void> _resumePlaybackAfterReconnect() async {
+    // ✅ 防御性编程：如果用户主动暂停，不要恢复播放
+    if (_userManuallyPaused) {
+      debugPrint('⚠️ [防御性检查] 用户已主动暂停，取消自动恢复播放');
+      _shouldResumeAfterReconnect = false;
+      return;
+    }
+    
     if (_currentPlayingFile == null) {
       _shouldResumeAfterReconnect = false;
       _isAutoResuming = false;
