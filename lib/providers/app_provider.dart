@@ -274,10 +274,16 @@ class AppProvider extends ChangeNotifier {
 
   /// ✅ SSH重连后恢复播放（关键修复：恢复到断点位置）
   Future<void> _resumePlaybackAfterReconnect() async {
+    // ✅ 关键修复：立即清除恢复标志，防止重复触发
+    if (!_shouldResumeAfterReconnect) {
+      debugPrint('⚠️ [防御性检查] 没有待处理的恢复请求，跳过');
+      return;
+    }
+    _shouldResumeAfterReconnect = false;
+    
     // ✅ 防御性编程：如果用户主动暂停，不要恢复播放
     if (_userManuallyPaused) {
       debugPrint('⚠️ [防御性检查] 用户已主动暂停，取消自动恢复播放');
-      _shouldResumeAfterReconnect = false;
       return;
     }
     
@@ -296,6 +302,283 @@ class AppProvider extends ChangeNotifier {
       _updateMediaSessionMetadata(file);
       
       // ✅ 关键修复：统一使用流式播放，不再区分文件大小
+      await _streamingService.play(file.path, _playbackPositionBeforeDisconnect);
+      _isPlaying = true;
+      _isAutoResuming = false;
+      _userManuallyPaused = false;
+      _currentPlayingFile = file;
+      _position = _playbackPositionBeforeDisconnect ?? Duration.zero;
+      _duration = await _streamingService.getDuration();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('⚠️ 恢复播放异常: $e');
+      _isPlaying = false;
+      _isAutoResuming = false;
+      _userManuallyPaused = false;
+      _currentPlayingFile = null;
+      _position = Duration.zero;
+      _duration = Duration.zero;
+      notifyListeners();
+    }
+  }
+
+  /// 设置音频播放器监听
+  void _setupAudioPlayerListeners() {
+    _audioPlayerService.onPositionChanged = (position) {
+      _position = position;
+      notifyListeners();
+    };
+
+    _audioPlayerService.onDurationChanged = (duration) {
+      _duration = duration;
+      notifyListeners();
+    };
+
+    _audioPlayerService.onPlaybackCompleted = () {
+      _isPlaying = false;
+      _currentPlayingFile = null;
+      _position = Duration.zero;
+      _duration = Duration.zero;
+      notifyListeners();
+    };
+
+    _audioPlayerService.onPlaybackError = (error) {
+      debugPrint('⚠️ 播放错误: $error');
+      _isPlaying = false;
+      _currentPlayingFile = null;
+      _position = Duration.zero;
+      _duration = Duration.zero;
+      notifyListeners();
+    };
+  }
+
+  /// 设置定时器监听
+  void _setupTimerListeners() {
+    _timerService.onTimerTick = () {
+      if (_isPlaying) {
+        _position = _audioPlayerService.currentPosition;
+        notifyListeners();
+      }
+    };
+  }
+
+  /// 加载 SSH 配置
+  Future<void> _loadSSHConfigs() async {
+    final configs = await _databaseService.loadSSHConfigs();
+    _sshConfigs = configs;
+    notifyListeners();
+  }
+
+  /// 保存 SSH 配置
+  Future<void> saveSSHConfig(SSHConfig config) async {
+    await _databaseService.saveSSHConfig(config);
+    await _loadSSHConfigs();
+  }
+
+  /// 删除 SSH 配置
+  Future<void> deleteSSHConfig(SSHConfig config) async {
+    await _databaseService.deleteSSHConfig(config);
+    await _loadSSHConfigs();
+  }
+
+  /// 设置活动 SSH 配置
+  Future<void> setActiveSSHConfig(SSHConfig config) async {
+    _activeSSHConfig = config;
+    await _sshService.connect(config);
+    _isSSHConnected = _sshService.isConnected;
+    notifyListeners();
+  }
+
+  /// 切换本地文件模式
+  void toggleLocalMode() {
+    _isLocalMode = !_isLocalMode;
+    notifyListeners();
+  }
+
+  /// 刷新文件列表
+  Future<void> refreshFiles() async {
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      if (_isLocalMode) {
+        final directory = Directory(_currentPath);
+        final files = await directory.list().toList();
+        _currentFiles = files
+            .map((entity) => MediaFile(
+                  name: entity.path.split('/').last,
+                  path: entity.path,
+                  isDirectory: entity is Directory,
+                ))
+            .toList();
+      } else {
+        if (_activeSSHConfig != null) {
+          final files = await _sshService.listFiles(_currentPath);
+          _currentFiles = files;
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ 刷新文件列表异常: $e');
+    }
+
+    _isLoading = false;
+    _refreshCounter++;
+    notifyListeners();
+  }
+
+  /// 导航到指定路径
+  Future<void> navigateToPath(String path) async {
+    _currentPath = path;
+    await refreshFiles();
+  }
+
+  /// 打开播放列表
+  Future<void> openPlaylist(String playlistId) async {
+    final playlist = await _databaseService.loadPlaylist(playlistId);
+    if (playlist != null) {
+      _currentPlaylistId = playlistId;
+      _playlist = playlist.files;
+      _currentIndex = 0;
+      _currentPlayingFile = null;
+      _position = Duration.zero;
+      _duration = Duration.zero;
+      _isPlaying = false;
+      _shouldResumeAfterReconnect = false;
+      _playbackPositionBeforeDisconnect = null;
+      _isAutoResuming = false;
+      _userManuallyPaused = false;
+      notifyListeners();
+    }
+  }
+
+  /// 保存播放列表
+  Future<void> savePlaylist(Playlist playlist) async {
+    await _databaseService.savePlaylist(playlist);
+  }
+
+  /// 删除播放列表
+  Future<void> deletePlaylist(String playlistId) async {
+    await _databaseService.deletePlaylist(playlistId);
+  }
+
+  /// 播放当前播放列表中的文件
+  Future<void> playCurrentFile() async {
+    if (_currentIndex < _playlist.length) {
+      final file = _playlist[_currentIndex];
+      await _playFile(file);
+    }
+  }
+
+  /// 播放下一个文件
+  Future<void> playNextFile() async {
+    if (_currentIndex < _playlist.length - 1) {
+      _currentIndex++;
+      final file = _playlist[_currentIndex];
+      await _playFile(file);
+    }
+  }
+
+  /// 播放上一个文件
+  Future<void> playPreviousFile() async {
+    if (_currentIndex > 0) {
+      _currentIndex--;
+      final file = _playlist[_currentIndex];
+      await _playFile(file);
+    }
+  }
+
+  /// 播放指定文件
+  Future<void> _playFile(MediaFile file) async {
+    try {
+      _isPlaying = true;
+      _currentPlayingFile = file;
+      _position = Duration.zero;
+      _duration = Duration.zero;
+      _shouldResumeAfterReconnect = false;
+      _playbackPositionBeforeDisconnect = null;
+      _isAutoResuming = false;
+      _userManuallyPaused = false;
+
+      // ✅ 更新 MediaSession 元数据（蓝牙设备显示曲目名称）
+      _updateMediaSessionMetadata(file);
+
+      // ✅ 关键修复：统一使用流式播放，不再区分文件大小
+      await _streamingService.play(file.path);
+      _duration = await _streamingService.getDuration();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('⚠️ 播放文件异常: $e');
+      _isPlaying = false;
+      _currentPlayingFile = null;
+      _position = Duration.zero;
+      _duration = Duration.zero;
+      notifyListeners();
+    }
+  }
+
+  /// 暂停播放
+  Future<void> pausePlayback() async {
+    try {
+      await _audioPlayerService.pause();
+      await _streamingService.pause();
+      _isPlaying = false;
+      _userManuallyPaused = true;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('⚠️ 暂停播放异常: $e');
+      _isPlaying = false;
+      _userManuallyPaused = true;
+      notifyListeners();
+    }
+  }
+
+  /// 停止播放
+  Future<void> stopPlayback() async {
+    try {
+      await _audioPlayerService.stop();
+      await _streamingService.stop();
+      _isPlaying = false;
+      _currentPlayingFile = null;
+      _position = Duration.zero;
+      _duration = Duration.zero;
+      _shouldResumeAfterReconnect = false;
+      _playbackPositionBeforeDisconnect = null;
+      _isAutoResuming = false;
+      _userManuallyPaused = false;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('⚠️ 停止播放异常: $e');
+      _isPlaying = false;
+      _currentPlayingFile = null;
+      _position = Duration.zero;
+      _duration = Duration.zero;
+      _shouldResumeAfterReconnect = false;
+      _playbackPositionBeforeDisconnect = null;
+      _isAutoResuming = false;
+      _userManuallyPaused = false;
+      notifyListeners();
+    }
+  }
+
+  /// 更新 MediaSession 元数据（蓝牙设备显示曲目名称）
+  void _updateMediaSessionMetadata(MediaFile file) {
+    // TODO: 实现 MediaSession 元数据更新
+  }
+
+  /// 后台预下载
+  Future<void> startPredownload() async {
+    if (_isPredownloading) return;
+
+    _isPredownloading = true;
+    _predownloadIndex = _currentIndex;
+    _predownloadMaxIndex = _playlist.length - 1;
+
+    while (_predownloadIndex <= _predownloadMaxIndex) {
+      final file = _playlist[_predownloadIndex];
+      final localPath = await _downloadFile(file.path);
+      _downloadCache[file.path] = localPath;
+      _predownloadIndex++;
+    }
       debugPrint('🌐 重新启动流式服务...');
       await _playMediaStreaming(file);
       
