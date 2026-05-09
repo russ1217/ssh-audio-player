@@ -321,7 +321,8 @@ class AppProvider extends ChangeNotifier {
         await Future.delayed(const Duration(milliseconds: 500));
         await _audioPlayerService.seek(_playbackPositionBeforeDisconnect!);
         debugPrint('⏩ 恢复到断线前的进度: $_playbackPositionBeforeDisconnect');
-        _playbackPositionBeforeDisconnect = null; // 清除保存的进度
+        // ✅ 关键修复：不要在这里清除_playbackPositionBeforeDisconnect，让它保留直到下次SSH断开时被覆盖
+        // _playbackPositionBeforeDisconnect = null; // 清除保存的进度
       }
       
       // ✅ 关键修复：恢复成功后清除_isAutoResuming标志，允许下次断开时重新设置
