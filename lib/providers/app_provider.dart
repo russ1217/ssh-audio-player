@@ -71,7 +71,7 @@ class AppProvider extends ChangeNotifier {
   List<SSHConfig> get sshConfigs => _sshConfigs;
   SSHConfig? get activeSSHConfig => _activeSSHConfig;
   bool get isSSHConnected => _isSSHConnected;
-  bool get shouldResumeAfterReconnect => _shouldResumeAfterReconnect; // ✅ 暴露恢复标志
+  bool get shouldResumeAfterReconnect => _needResumeOnReconnect; // ✅ 暴露恢复标志（使用新的变量名）
   List<MediaFile> get currentFiles => _currentFiles;
   String get currentPath => _currentPath;
   bool get isLoading => _isLoading;
@@ -151,12 +151,11 @@ class AppProvider extends ChangeNotifier {
         notifyListeners();
         
         // 如果需要恢复播放
-        if (_shouldResumeAfterReconnect && _currentPlayingFile != null) {
+        if (_needResumeOnReconnect && _currentPlayingFile != null) {
           // ✅ 关键修复：如果用户主动暂停，不要自动恢复播放
           if (_userManuallyPaused) {
             debugPrint('⚠️ 用户已主动暂停，网络恢复后不自动恢复播放，保留暂停状态');
-            _shouldResumeAfterReconnect = false;
-            // ✅ 关键修复：不清除 _userManuallyPaused，保留用户的暂停意图
+            _needResumeOnReconnect = false;
           } else {
             debugPrint('🔄 网络恢复，准备恢复播放...');
             await Future.delayed(const Duration(milliseconds: 500));
@@ -179,7 +178,7 @@ class AppProvider extends ChangeNotifier {
       debugPrint('🔄 流式服务检测到 SSH 断开，准备恢复播放...');
       // 流式服务的 SSH 断开，触发自动恢复
       if (_isPlaying && _currentPlayingFile != null) {
-        _autoResumePlayback();
+        _handleSSHDisconnected();
       }
     };
   }
@@ -210,18 +209,18 @@ class AppProvider extends ChangeNotifier {
       if (!isConnected) {
         debugPrint('⚠️ SSH 连接已断开');
         // SSH 断开时，如果正在使用流式播放，尝试自动恢复
-        if (_isPlaying && _currentPlayingFile != null && !_isAutoResuming) {
-          debugPrint('🔄 心跳检测：SSH 断开，自动恢复播放');
-          _autoResumePlayback();
+        if (_isPlaying && _currentPlayingFile != null) {
+          debugPrint('🔄 心跳检测：SSH 断开，准备断网恢复');
+          _handleSSHDisconnected();
         }
       } else {
         debugPrint('✅ SSH 连接已恢复');
-        if (_shouldResumeAfterReconnect) {
-          // ✅ 关键修复：如果用户主动暂停，不要自动恢复播放
+        // SSH 重连成功后，如果之前正在播放，自动恢复播放
+        if (_needResumeOnReconnect) {
+          // ✅ 关键修复：检查用户是否主动暂停，如果是则不自动恢复
           if (_userManuallyPaused) {
             debugPrint('⚠️ 用户已主动暂停，SSH重连后不自动恢复播放，保留暂停状态');
-            _shouldResumeAfterReconnect = false;
-            // ✅ 关键修复：不清除 _userManuallyPaused，保留用户的暂停意图
+            _needResumeOnReconnect = false;
           } else {
             debugPrint('🔄 心跳检测：SSH 已恢复，自动恢复播放...');
             _resumePlaybackAfterReconnect();
@@ -232,35 +231,38 @@ class AppProvider extends ChangeNotifier {
     });
   }
 
-  // 自动恢复播放相关
-  bool _shouldResumeAfterReconnect = false;
-  Duration? _playbackPositionBeforeDisconnect;
-  bool _isAutoResuming = false; // 防抖标志
-  bool _userManuallyPaused = false; // ✅ 新增：标记用户是否主动暂停（与音频焦点丢失/网络断开区分）
+  // ✅ 简化状态管理：只使用必要的标志位
+  bool _needResumeOnReconnect = false; // 唯一标志位：是否需要在重连后恢复播放
+  Duration? _playbackPositionBeforeDisconnect; // 断点位置（不清除，直到下次断开时覆盖）
+  bool _isResuming = false; // 正在执行恢复流程（防止并发）
+  bool _userManuallyPaused = false; // 用户主动暂停标记
 
-  /// SSH 断开时保存播放状态
-  Future<void> _autoResumePlayback() async {
-    debugPrint('🔍 _autoResumePlayback 被调用，当前 _isAutoResuming=$_isAutoResuming, _playbackPositionBeforeDisconnect=$_playbackPositionBeforeDisconnect');
+  /// SSH 断开时保存播放状态并停止播放
+  Future<void> _handleSSHDisconnected() async {
+    debugPrint('🔍 _handleSSHDisconnected 被调用, _userManuallyPaused=$_userManuallyPaused');
     
-    if (_isAutoResuming) {
-      debugPrint('⚠️ 已经在自动恢复中，忽略重复请求，保留位置: $_playbackPositionBeforeDisconnect');
+    // ✅ 防御性检查：如果用户主动暂停，不需要恢复
+    if (_userManuallyPaused) {
+      debugPrint('⚠️ 用户已主动暂停，不进行断网恢复准备');
+      _needResumeOnReconnect = false;
       return;
     }
     
-    _isAutoResuming = true;
-    _shouldResumeAfterReconnect = true;
-    
-    // ✅ 关键修复：只在播放器仍在播放时更新位置，避免使用idle状态的错误位置
+    // ✅ 获取当前播放位置
     final currentPosition = _audioPlayerService.currentPosition;
-    debugPrint('📍 当前播放器位置: $currentPosition');
     if (currentPosition != null && currentPosition > Duration.zero) {
       _playbackPositionBeforeDisconnect = currentPosition;
-      debugPrint('💾 保存播放进度: $_playbackPositionBeforeDisconnect，用户手动暂停状态: $_userManuallyPaused');
+      debugPrint('💾 保存断点位置: $_playbackPositionBeforeDisconnect');
     } else {
-      debugPrint('⚠️ 播放器已停止或位置无效 ($currentPosition)，保留之前的断点位置: $_playbackPositionBeforeDisconnect');
+      debugPrint('⚠️ 播放器位置无效 ($currentPosition)，无法保存断点');
+      _needResumeOnReconnect = false;
+      return;
     }
     
-    // 停止当前播放（因为 SSH 已断开，流式服务无法工作）
+    // ✅ 设置恢复标志
+    _needResumeOnReconnect = true;
+    
+    // ✅ 停止当前播放（SSH 已断开，流式服务无法工作）
     try {
       await _audioPlayerService.stop();
       await _streamingService.stop();
@@ -269,72 +271,131 @@ class AppProvider extends ChangeNotifier {
     }
     _isPlaying = false;
     
-    // ✅ 关键修改：不再主动触发有限次数的重试，依赖SSH心跳检测的持续重试机制
-    if (_activeSSHConfig != null) {
-      debugPrint('ℹ️ SSH心跳检测将持续尝试重连（每10秒一次），重连成功后会自动恢复播放');
-      debugPrint('ℹ️ 如果长时间未恢复，请检查网络连接或手动重连');
-    } else {
-      debugPrint('❌ 没有活动的 SSH 配置，无法重连');
-      _isAutoResuming = false;
-    }
-    
+    debugPrint('ℹ️ 已准备好在 SSH 重连后恢复播放');
     notifyListeners();
   }
 
-  /// ✅ SSH重连后恢复播放（关键修复：恢复到断点位置）
+  /// SSH 重连后恢复播放
   Future<void> _resumePlaybackAfterReconnect() async {
-    // ✅ 关键修复：立即清除恢复标志，防止重复触发
-    if (!_shouldResumeAfterReconnect) {
-      debugPrint('⚠️ [防御性检查] 没有待处理的恢复请求，跳过');
-      return;
-    }
-    _shouldResumeAfterReconnect = false;
+    debugPrint('🔍 _resumePlaybackAfterReconnect 被调用, _needResumeOnReconnect=$_needResumeOnReconnect, _isResuming=$_isResuming');
     
-    // ✅ 防御性编程：如果用户主动暂停，不要恢复播放
-    if (_userManuallyPaused) {
-      debugPrint('⚠️ [防御性检查] 用户已主动暂停，取消自动恢复播放');
-      _shouldResumeAfterReconnect = false;
+    // ✅ 防止并发执行
+    if (_isResuming) {
+      debugPrint('⚠️ 已经在恢复播放中，跳过重复调用');
       return;
     }
     
+    // ✅ 检查是否需要恢复
+    if (!_needResumeOnReconnect) {
+      debugPrint('⚠️ 没有待处理的恢复请求，跳过');
+      return;
+    }
+    
+    // ✅ 检查是否有有效的断点位置
+    if (_playbackPositionBeforeDisconnect == null || _playbackPositionBeforeDisconnect! <= Duration.zero) {
+      debugPrint('⚠️ 没有有效的断点位置，跳过恢复');
+      _needResumeOnReconnect = false;
+      return;
+    }
+    
+    // ✅ 检查是否有正在播放的文件
     if (_currentPlayingFile == null) {
-      _shouldResumeAfterReconnect = false;
-      _isAutoResuming = false;
+      debugPrint('⚠️ 没有正在播放的文件，跳过恢复');
+      _needResumeOnReconnect = false;
       return;
     }
-
+    
+    // ✅ 设置恢复进行中标志
+    _isResuming = true;
+    
     try {
-      debugPrint('🔄 正在恢复播放: ${_currentPlayingFile!.name}');
+      // ✅ 关键修复：立即捕获断点位置和文件到局部变量，防止被其他地方修改
+      final restorePosition = _playbackPositionBeforeDisconnect!;
+      final fileToPlay = _currentPlayingFile!;
       
-      final file = _currentPlayingFile!;
+      debugPrint('🎯 开始恢复播放，目标位置: $restorePosition, 文件: ${fileToPlay.name}');
       
       // ✅ 更新 MediaSession 元数据（蓝牙设备显示曲目名称）
-      _updateMediaSessionMetadata(file);
+      _updateMediaSessionMetadata(fileToPlay);
       
-      // ✅ 关键修复：统一使用流式播放，不再区分文件大小
-      debugPrint('🌐 重新启动流式服务...');
-      await _playMediaStreaming(file);
-      
-      // ✅ 关键修复：如果有保存的播放位置，恢复到该位置
-      if (_playbackPositionBeforeDisconnect != null && _playbackPositionBeforeDisconnect! > Duration.zero) {
-        // 等待播放器初始化完成
-        await Future.delayed(const Duration(milliseconds: 500));
-        await _audioPlayerService.seek(_playbackPositionBeforeDisconnect!);
-        debugPrint('⏩ 恢复到断线前的进度: $_playbackPositionBeforeDisconnect');
-        // ✅ 关键修复：不要在这里清除_playbackPositionBeforeDisconnect，让它保留直到下次SSH断开时被覆盖
-        // _playbackPositionBeforeDisconnect = null; // 清除保存的进度
+      // ✅ 关键修复：先完全停止旧的流式服务
+      debugPrint('🛑 停止旧的流式服务...');
+      try {
+        await _streamingService.stop();
+        await Future.delayed(const Duration(milliseconds: 300));
+        debugPrint('✅ 旧流式服务已停止');
+      } catch (e) {
+        debugPrint('⚠️ 停止旧流式服务异常: $e');
       }
       
-      // ✅ 关键修复：恢复成功后清除_isAutoResuming标志，允许下次断开时重新设置
-      _isAutoResuming = false;
-      debugPrint('✅ 恢复播放成功，清除_isAutoResuming标志');
+      // ✅ 关键修复：重新启动流式服务并获取URL
+      debugPrint('📡 重新启动流式服务...');
+      final fileSize = fileToPlay.size ?? await _sshService.getFileSize(fileToPlay.path) ?? 0;
+      final streamUrl = await _streamingService.startStreaming(
+        sshClient: _sshService.getClient()!,
+        remotePath: fileToPlay.path,
+        fileSize: fileSize,
+        createNewSshClient: _sshService.createNewConnection,
+      );
+      
+      // ✅ 关键修复：加载URL但不自动播放（使用 setUrlWithoutPlay）
+      debugPrint('🎵 加载音频流（不自动播放）: $streamUrl');
+      await _audioPlayerService.setUrlWithoutPlay(streamUrl, isVideo: fileToPlay.isVideo);
+      debugPrint('⏸️ URL 已加载，播放器处于暂停状态');
+      
+      // ✅ 等待播放器加载完成
+      debugPrint('⏳ 等待播放器就绪...');
+      int waitCount = 0;
+      const maxWaitTime = 10000; // 最多等待10秒
+      const checkInterval = 200; // 每200ms检查一次
+      
+      while (waitCount < maxWaitTime) {
+        final duration = _audioPlayerService.duration;
+        if (duration != null && duration > Duration.zero) {
+          debugPrint('✅ 播放器已就绪 (时长: $duration, 位置: ${_audioPlayerService.currentPosition})');
+          break;
+        }
+        await Future.delayed(const Duration(milliseconds: checkInterval));
+        waitCount += checkInterval;
+      }
+      
+      if (waitCount >= maxWaitTime) {
+        throw Exception('等待播放器就绪超时');
+      }
+      
+      // ✅ 暂停播放器（确保不在播放状态）
+      debugPrint('⏸️ 暂停播放器准备Seek...');
+      await _audioPlayerService.pause();
+      await Future.delayed(const Duration(milliseconds: 500)); // 确保暂停生效
+      
+      // ✅ 执行seek操作
+      debugPrint('⏩ Seek到断点位置: $restorePosition');
+      await _audioPlayerService.seek(restorePosition);
+      await Future.delayed(const Duration(milliseconds: 500)); // 确保seek生效
+      
+      // ✅ 验证seek是否成功
+      final actualPosition = _audioPlayerService.currentPosition;
+      debugPrint('📍 Seek后的实际位置: $actualPosition (期望: $restorePosition)');
+      
+      // ✅ 恢复播放
+      debugPrint('▶️ 恢复播放');
+      await _audioPlayerService.play();
+      _isPlaying = true;
+      
+      debugPrint('✅ 恢复播放成功！当前位置: $_isPlaying');
+      
     } catch (e) {
-      debugPrint('⚠️ 恢复播放异常: $e');
-      _isAutoResuming = false;
-      _shouldResumeAfterReconnect = false;
-      _playbackPositionBeforeDisconnect = null;
-      debugPrint('🔄 恢复播放失败，清除所有恢复标志');
+      debugPrint('❌ 恢复播放失败: $e');
+      _isPlaying = false;
+    } finally {
+      // ✅ 关键修复：在finally中清理临时状态
+      _isResuming = false;
+      // ✅ 注意：不清除 _needResumeOnReconnect 和 _playbackPositionBeforeDisconnect
+      // 它们会在下次断开时被覆盖，或者在用户手动停止时被清除
+      debugPrint('🧹 清理恢复状态标志 (_isResuming=false)');
     }
+    
+    notifyListeners();
   }
 
   /// 停止播放
@@ -350,7 +411,7 @@ class AppProvider extends ChangeNotifier {
     
     // ✅ 关键修复：停止播放时清除所有恢复标志
     _userManuallyPaused = false;
-    _shouldResumeAfterReconnect = false;
+    _needResumeOnReconnect = false;
     _playbackPositionBeforeDisconnect = null;
     debugPrint('🛑 停止播放，清除所有恢复标志');
     
@@ -546,7 +607,7 @@ class AppProvider extends ChangeNotifier {
     // ✅ 关键修复：如果用户主动暂停，不进行自动恢复
     if (_userManuallyPaused) {
       debugPrint('⚠️ 用户已主动暂停，网络恢复后不自动恢复播放');
-      _shouldResumeAfterReconnect = false;
+      _needResumeOnReconnect = false;
       return;
     }
     
@@ -1090,6 +1151,10 @@ class AppProvider extends ChangeNotifier {
         // ✅ 更新 MediaSession 播放状态为暂停
         _updateMediaSessionPlaybackState(isPlaying: false);
       } else {
+        // ✅ 关键修复：用户主动播放前，先清除暂停标志
+        _userManuallyPaused = false;
+        debugPrint('▶️ 用户准备播放，已清除 _userManuallyPaused 标志');
+        
         // ✅ 关键修复：区分本地文件和流式文件的恢复逻辑
         if (_currentPlayingFile != null && !_isLocalMode) {
           // SSH 流式文件：直接恢复播放，不重新启动流式服务
@@ -1106,13 +1171,9 @@ class AppProvider extends ChangeNotifier {
           // ✅ 直接调用 play() 恢复播放，保持当前位置
           await _audioPlayerService.play();
           
-          // 如果有之前保存的进度（来自断线重连），恢复到该位置
-          if (_playbackPositionBeforeDisconnect != null && _playbackPositionBeforeDisconnect! > Duration.zero) {
-            await Future.delayed(const Duration(milliseconds: 500));
-            await _audioPlayerService.seek(_playbackPositionBeforeDisconnect!);
-            debugPrint('⏩ 恢复到断线前的进度: $_playbackPositionBeforeDisconnect');
-            _playbackPositionBeforeDisconnect = null; // 清除保存的进度
-          }
+          // ✅ 关键修复：移除断点续播逻辑
+          // 断点续播应该由 _resumePlaybackAfterReconnect 统一处理
+          // 用户手动点击播放不应该触发断点恢复，否则会与自动恢复冲突
         } else {
           // 本地音频直接播放
           debugPrint('▶️ 本地音频恢复播放');
@@ -1120,9 +1181,7 @@ class AppProvider extends ChangeNotifier {
         }
         
         _isPlaying = true;
-        // ✅ 用户主动播放，清除标志
-        _userManuallyPaused = false;
-        debugPrint('▶️ 用户主动播放，_isPlaying = true, _userManuallyPaused = false');
+        debugPrint('▶️ 用户主动播放，_isPlaying = true');
         
         // ✅ 更新 MediaSession 播放状态为播放中
         _updateMediaSessionPlaybackState(isPlaying: true);

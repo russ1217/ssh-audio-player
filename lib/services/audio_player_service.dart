@@ -70,6 +70,11 @@ class _DesktopAudioPlayerService extends AudioPlayerServiceBase {
   }
 
   @override
+  Future<void> setUrlWithoutPlay(String url, {bool isVideo = false}) async {
+    debugPrint('⚠️ 桌面平台不支持加载 URL（不播放）: $url');
+  }
+
+  @override
   Future<void> play() async {
     debugPrint('⚠️ 桌面平台不支持播放');
   }
@@ -332,6 +337,33 @@ class _MobileAudioPlayerService extends AudioPlayerServiceBase {
       debugPrint('🎵 播放命令已发送');
     } catch (e, stackTrace) {
       debugPrint('❌ 播放 URL 失败: $e');
+      debugPrint('堆栈: $stackTrace');
+    }
+  }
+
+  @override
+  Future<void> setUrlWithoutPlay(String url, {bool isVideo = false}) async {
+    if (!_isInitialized || _audioPlayer == null) return;
+    try {
+      debugPrint('🎵 准备加载 URL（不播放）: $url');
+      
+      // ✅ 关键修复：在播放前激活音频会话
+      try {
+        final session = await AudioSession.instance;
+        await session.setActive(true);
+        debugPrint('✅ 音频会话已激活');
+      } catch (e) {
+        debugPrint('⚠️ 激活音频会话失败: $e');
+      }
+      
+      // ✅ 关键修复：确保音量为最大值
+      await _audioPlayer!.setVolume(1.0);
+      debugPrint('🔊 设置音量为 1.0');
+      
+      await _audioPlayer!.setUrl(url);
+      debugPrint('🎵 URL 加载成功，持续时间: ${_audioPlayer!.duration}');
+    } catch (e, stackTrace) {
+      debugPrint('❌ 加载 URL 失败: $e');
       debugPrint('堆栈: $stackTrace');
     }
   }

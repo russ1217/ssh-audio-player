@@ -20,6 +20,10 @@ abstract class AudioPlayerServiceBase {
 
   Future<void> playFile(String filePath, {bool isVideo = false});
   Future<void> playUrl(String url, {bool isVideo = false});
+  
+  /// ✅ 新增：加载URL但不自动播放（用于断网续播场景）
+  Future<void> setUrlWithoutPlay(String url, {bool isVideo = false});
+  
   Future<void> play();
   Future<void> pause();
   Future<void> stop();
