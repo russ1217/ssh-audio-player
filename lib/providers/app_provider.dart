@@ -134,10 +134,15 @@ class AppProvider extends ChangeNotifier {
   void _handleNetworkDisconnected() {
     debugPrint('⚠️ 网络已断开（仅供参考，不触发重连）');
     
-    // ✅ 关键修改：网络断开时只记录日志，不触发任何操作
-    // SSH重连由SSH心跳检测和应用恢复到前台时的主动检查负责
-    if (_isPlaying && !_isLocalMode && _currentPlayingFile != null) {
-      debugPrint('ℹ️ 如果SSH因此断开，将由SSH心跳检测或应用恢复时处理');
+    // ✅ 关键修改：本地模式下完全不受网络影响，直接返回
+    if (_isLocalMode) {
+      debugPrint('ℹ️ 本地模式，网络断开不影响播放');
+      return;
+    }
+    
+    // SSH模式下才需要关注网络状态
+    if (_isPlaying && _currentPlayingFile != null) {
+      debugPrint('ℹ️ SSH模式下网络断开，将由SSH心跳检测或应用恢复时处理');
     }
   }
 
@@ -145,10 +150,16 @@ class AppProvider extends ChangeNotifier {
   Future<void> _handleNetworkReconnected() async {
     debugPrint('✅ 网络已恢复，立即检查SSH连接状态...');
     
+    // ✅ 关键修复：本地模式下完全不受网络影响，直接返回
+    if (_isLocalMode) {
+      debugPrint('ℹ️ 本地模式，网络恢复不影响播放，跳过SSH检查');
+      return;
+    }
+    
     // ✅ 关键改进：网络恢复时立即检查SSH连接并尝试重连
     // 虽然connectivity_plus可能检测不到VPN，但能检测到基础网络变化
     // 这通常意味着VPN也在重连，所以应该立即检查SSH状态
-    if (!_isLocalMode && _activeSSHConfig != null) {
+    if (_activeSSHConfig != null) {
       debugPrint('🔍 SSH模式下，验证SSH连接有效性...');
       
       // 调用SSH服务的主动检查方法
@@ -177,7 +188,7 @@ class AppProvider extends ChangeNotifier {
         notifyListeners();
       }
     } else {
-      debugPrint('ℹ️ 本地模式或无SSH配置，跳过SSH检查');
+      debugPrint('ℹ️ 无SSH配置，跳过SSH检查');
     }
   }
 
@@ -226,13 +237,11 @@ class AppProvider extends ChangeNotifier {
         debugPrint('✅ SSH 连接已恢复');
         // SSH 重连成功后，如果之前正在播放，自动恢复播放
         if (_needResumeOnReconnect) {
-          // ✅ 关键修复：检查用户是否主动暂停，如果是则不自动恢复
+          // ✅ 关键修复：如果用户主动暂停，不进行自动恢复
           if (_userManuallyPaused) {
-            debugPrint('⚠️ 用户已主动暂停，SSH重连后不自动恢复播放，保留暂停状态');
+            debugPrint('⚠️ 用户已主动暂停，网络恢复后不自动恢复播放');
             _needResumeOnReconnect = false;
-          } else {
-            debugPrint('🔄 心跳检测：SSH 已恢复，自动恢复播放...');
-            _resumePlaybackAfterReconnect();
+            return;
           }
         }
       }
@@ -248,7 +257,13 @@ class AppProvider extends ChangeNotifier {
 
   /// SSH 断开时保存播放状态并停止播放
   Future<void> _handleSSHDisconnected() async {
-    debugPrint('🔍 _handleSSHDisconnected 被调用, _userManuallyPaused=$_userManuallyPaused');
+    debugPrint('🔍 _handleSSHDisconnected 被调用, _userManuallyPaused=$_userManuallyPaused, _isLocalMode=$_isLocalMode');
+    
+    // ✅ 关键修复：本地模式下不应该触发SSH断开处理
+    if (_isLocalMode) {
+      debugPrint('ℹ️ 本地模式，忽略SSH断开事件');
+      return;
+    }
     
     // ✅ 防御性检查：如果用户主动暂停，不需要恢复
     if (_userManuallyPaused) {
@@ -286,7 +301,14 @@ class AppProvider extends ChangeNotifier {
 
   /// SSH 重连后恢复播放
   Future<void> _resumePlaybackAfterReconnect() async {
-    debugPrint('🔍 _resumePlaybackAfterReconnect 被调用, _needResumeOnReconnect=$_needResumeOnReconnect, _isResuming=$_isResuming');
+    debugPrint('🔍 _resumePlaybackAfterReconnect 被调用, _needResumeOnReconnect=$_needResumeOnReconnect, _isResuming=$_isResuming, _isLocalMode=$_isLocalMode');
+    
+    // ✅ 关键修复：本地模式下不应该触发恢复逻辑
+    if (_isLocalMode) {
+      debugPrint('ℹ️ 本地模式，跳过SSH恢复逻辑');
+      _needResumeOnReconnect = false;
+      return;
+    }
     
     // ✅ 防止并发执行
     if (_isResuming) {
@@ -605,6 +627,12 @@ class AppProvider extends ChangeNotifier {
   /// ✅ 公开方法：手动触发网络恢复检查（供main.dart调用）
   Future<void> handleNetworkReconnected() async {
     debugPrint('🔄 手动触发网络恢复检查...');
+    
+    // ✅ 关键修复：本地模式下完全不受网络影响，直接返回
+    if (_isLocalMode) {
+      debugPrint('ℹ️ 本地模式，网络恢复不影响播放，跳过检查');
+      return;
+    }
     
     // ✅ 关键修复：先检查SSH是否已经连接
     final wasConnected = _sshService.isConnected;
