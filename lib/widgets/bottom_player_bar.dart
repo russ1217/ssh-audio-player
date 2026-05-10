@@ -73,6 +73,13 @@ class BottomPlayerBar extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
+                  // ✅ 播放模式切换按钮（移到最左边）
+                  IconButton(
+                    icon: Icon(_getRepeatModeIcon(provider.repeatMode)),
+                    onPressed: () => provider.toggleRepeatMode(),
+                    tooltip: _getRepeatModeTooltip(provider.repeatMode),
+                    color: _getRepeatModeColor(provider.repeatMode),
+                  ),
                   // 上一曲
                   IconButton(
                     icon: const Icon(Icons.skip_previous),
@@ -111,13 +118,6 @@ class BottomPlayerBar extends StatelessWidget {
                         ? () => provider.playNextInPlaylist()
                         : null,
                     tooltip: '下一曲',
-                  ),
-                  // ✅ 播放模式切换按钮
-                  IconButton(
-                    icon: Icon(_getRepeatModeIcon(provider.repeatMode)),
-                    onPressed: () => provider.toggleRepeatMode(),
-                    tooltip: _getRepeatModeTooltip(provider.repeatMode),
-                    color: _getRepeatModeColor(provider.repeatMode),
                   ),
                   // 停止
                   IconButton(
