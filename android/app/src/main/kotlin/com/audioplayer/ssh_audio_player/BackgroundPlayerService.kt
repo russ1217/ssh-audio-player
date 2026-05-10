@@ -28,6 +28,8 @@ import io.flutter.plugin.common.MethodChannel
 import android.media.AudioManager
 import android.media.AudioFocusRequest
 import android.media.AudioAttributes
+// ✅ 新增：MediaStyle通知样式支持
+import androidx.media.app.NotificationCompat as MediaNotificationCompat
 
 class BackgroundPlayerService : Service() {
 
@@ -473,7 +475,7 @@ class BackgroundPlayerService : Service() {
             )
         }
         
-        // 恢复使用标准的 NotificationCompat，移除 MediaStyle 依赖
+        // ✅ 使用MediaStyle通知样式，支持小米"超级岛"等功能
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(currentTitle)
             .setContentText("SSH Player - Playing")
@@ -498,6 +500,10 @@ class BackgroundPlayerService : Service() {
                 "Stop",
                 stopIntent
             )
+            // ✅ 关键：设置MediaStyle样式并关联MediaSession，激活小米"超级岛"
+            .setStyle(MediaNotificationCompat.MediaStyle()
+                .setMediaSession(mediaSession!!.sessionToken)
+                .setShowActionsInCompactView(0, 1, 2)) // 在紧凑视图中显示前3个按钮
     }
     
     /**
