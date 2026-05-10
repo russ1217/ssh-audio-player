@@ -230,6 +230,21 @@ class AudioPlayerService extends AudioPlayerServiceBase {
   }
 
   @override
+  Future<void> setUrlWithoutPlay(String url, {bool isVideo = false}) async {
+    // ✅ 加载URL但不自动播放（用于断点续播场景）
+    await ensureInitialized();
+    
+    if (!_isInitialized || _audioPlayer == null) return;
+    try {
+      debugPrint('🔗 设置URL但不播放: $url');
+      await _audioPlayer!.setUrl(url);
+      debugPrint('✅ URL设置完成，播放器状态: playing=${_audioPlayer!.playing}');
+    } catch (e) {
+      debugPrint('❌ 设置URL失败: $e');
+    }
+  }
+
+  @override
   Future<void> play() async {
     if (!_isInitialized || _audioPlayer == null) return;
     await _audioPlayer!.play();

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
 import '../services/timer_service.dart';
+import '../models/playlist_repeat_mode.dart';
 
 class BottomPlayerBar extends StatelessWidget {
   const BottomPlayerBar({super.key});
@@ -103,10 +104,20 @@ class BottomPlayerBar extends StatelessWidget {
                   // 下一曲
                   IconButton(
                     icon: const Icon(Icons.skip_next),
-                    onPressed: provider.currentIndex < provider.playlist.length - 1
+                    onPressed: provider.currentIndex < provider.playlist.length - 1 || 
+                               provider.repeatMode == PlaylistRepeatMode.all ||
+                               provider.repeatMode == PlaylistRepeatMode.one ||
+                               provider.repeatMode == PlaylistRepeatMode.shuffle
                         ? () => provider.playNextInPlaylist()
                         : null,
                     tooltip: '下一曲',
+                  ),
+                  // ✅ 播放模式切换按钮
+                  IconButton(
+                    icon: Icon(_getRepeatModeIcon(provider.repeatMode)),
+                    onPressed: () => provider.toggleRepeatMode(),
+                    tooltip: _getRepeatModeTooltip(provider.repeatMode),
+                    color: _getRepeatModeColor(provider.repeatMode),
                   ),
                   // 停止
                   IconButton(
@@ -255,5 +266,45 @@ class BottomPlayerBar extends StatelessWidget {
       return '${hours}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
     }
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+  
+  /// 获取播放模式图标
+  IconData _getRepeatModeIcon(PlaylistRepeatMode mode) {
+    switch (mode) {
+      case PlaylistRepeatMode.off:
+        return Icons.repeat_one_outlined;
+      case PlaylistRepeatMode.all:
+        return Icons.repeat;
+      case PlaylistRepeatMode.one:
+        return Icons.repeat_one;
+      case PlaylistRepeatMode.shuffle:
+        return Icons.shuffle;
+    }
+  }
+  
+  /// 获取播放模式提示文本
+  String _getRepeatModeTooltip(PlaylistRepeatMode mode) {
+    switch (mode) {
+      case PlaylistRepeatMode.off:
+        return '正常播放';
+      case PlaylistRepeatMode.all:
+        return '列表循环';
+      case PlaylistRepeatMode.one:
+        return '单曲循环';
+      case PlaylistRepeatMode.shuffle:
+        return '随机播放';
+    }
+  }
+  
+  /// 获取播放模式颜色（深色背景下清晰可见）
+  Color? _getRepeatModeColor(PlaylistRepeatMode mode) {
+    switch (mode) {
+      case PlaylistRepeatMode.off:
+        return Colors.grey; // 灰色表示未激活
+      case PlaylistRepeatMode.all:
+      case PlaylistRepeatMode.one:
+      case PlaylistRepeatMode.shuffle:
+        return Colors.white; // 白色表示已激活，在深色背景下清晰
+    }
   }
 }

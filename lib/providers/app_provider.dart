@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:dartssh2/dartssh2.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/ssh_config.dart';
 import '../models/media_file.dart';
 import '../models/playlist.dart';
+import '../models/playlist_repeat_mode.dart';
 import '../services/ssh_service.dart';
 import '../services/database_service.dart';
 import '../services/audio_player_service.dart';
@@ -49,6 +51,10 @@ class AppProvider extends ChangeNotifier {
   List<MediaFile> _playlist = [];
   int _currentIndex = 0;
   MediaFile? _currentPlayingFile; // 当前正在播放的文件
+  
+  // ✅ 新增：播放模式支持
+  PlaylistRepeatMode _repeatMode = PlaylistRepeatMode.off; // 默认正常播放
+  List<int> _shuffleIndices = []; // 随机播放时的索引映射
 
   // 后台预下载
   final Map<String, String> _downloadCache = {}; // 文件路径 -> 本地路径
@@ -82,6 +88,9 @@ class AppProvider extends ChangeNotifier {
   bool get isPlaying => _isPlaying;
   Duration get position => _position;
   Duration get duration => _duration;
+  
+  // ✅ 播放模式 getters
+  PlaylistRepeatMode get repeatMode => _repeatMode;
 
   AppProvider() {
     _init();
@@ -1331,19 +1340,27 @@ class AppProvider extends ChangeNotifier {
 
   Future<void> playNextInPlaylist() async {
     if (_playlist.isEmpty) return;
-    if (_currentIndex < _playlist.length - 1) {
-      _currentIndex++;
+    
+    final nextIndex = _getNextIndex();
+    if (nextIndex != null) {
+      _currentIndex = nextIndex;
       debugPrint('⏭️ 下一曲: 索引 $_currentIndex, 文件 ${_playlist[_currentIndex].name}');
       await playMedia(_playlist[_currentIndex]);
+    } else {
+      debugPrint('⏹️ 播放列表结束（正常模式）');
     }
   }
 
   Future<void> playPreviousInPlaylist() async {
     if (_playlist.isEmpty) return;
-    if (_currentIndex > 0) {
-      _currentIndex--;
+    
+    final prevIndex = _getPreviousIndex();
+    if (prevIndex != null) {
+      _currentIndex = prevIndex;
       debugPrint('⏮️ 上一曲: 索引 $_currentIndex, 文件 ${_playlist[_currentIndex].name}');
       await playMedia(_playlist[_currentIndex]);
+    } else {
+      debugPrint('⚠️ 已经是第一首歌曲');
     }
   }
 
@@ -1361,8 +1378,104 @@ class AppProvider extends ChangeNotifier {
   void clearPlaylist() {
     _playlist.clear();
     _currentIndex = 0;
+    _shuffleIndices.clear(); // ✅ 清空随机索引
     _stopPredownloading();
     notifyListeners();
+  }
+
+  /// ✅ 切换播放模式：off -> all -> one -> shuffle -> off
+  void toggleRepeatMode() {
+    switch (_repeatMode) {
+      case PlaylistRepeatMode.off:
+        _repeatMode = PlaylistRepeatMode.all;
+        debugPrint('🔁 切换到列表循环模式');
+        break;
+      case PlaylistRepeatMode.all:
+        _repeatMode = PlaylistRepeatMode.one;
+        debugPrint('🔂 切换到单曲循环模式');
+        break;
+      case PlaylistRepeatMode.one:
+        _repeatMode = PlaylistRepeatMode.shuffle;
+        _generateShuffleIndices();
+        debugPrint('🔀 切换到随机播放模式');
+        break;
+      case PlaylistRepeatMode.shuffle:
+        _repeatMode = PlaylistRepeatMode.off;
+        _shuffleIndices.clear();
+        debugPrint('➡️ 切换到正常播放模式');
+        break;
+    }
+    notifyListeners();
+  }
+
+  /// ✅ 生成随机播放索引列表（Fisher-Yates洗牌算法）
+  void _generateShuffleIndices() {
+    if (_playlist.isEmpty) return;
+    
+    _shuffleIndices = List.generate(_playlist.length, (index) => index);
+    
+    final random = Random();
+    for (int i = _shuffleIndices.length - 1; i > 0; i--) {
+      final j = random.nextInt(i + 1);
+      final temp = _shuffleIndices[i];
+      _shuffleIndices[i] = _shuffleIndices[j];
+      _shuffleIndices[j] = temp;
+    }
+    
+    debugPrint('🔀 生成随机播放顺序: $_shuffleIndices');
+  }
+
+  /// ✅ 获取下一个播放索引（考虑播放模式）
+  int? _getNextIndex() {
+    if (_playlist.isEmpty) return null;
+    
+    switch (_repeatMode) {
+      case PlaylistRepeatMode.off:
+        return _currentIndex < _playlist.length - 1 ? _currentIndex + 1 : null;
+        
+      case PlaylistRepeatMode.all:
+        return (_currentIndex + 1) % _playlist.length;
+        
+      case PlaylistRepeatMode.one:
+        return _currentIndex;
+        
+      case PlaylistRepeatMode.shuffle:
+        if (_shuffleIndices.isEmpty) {
+          _generateShuffleIndices();
+        }
+        
+        final currentShufflePos = _shuffleIndices.indexOf(_currentIndex);
+        if (currentShufflePos >= 0 && currentShufflePos < _shuffleIndices.length - 1) {
+          return _shuffleIndices[currentShufflePos + 1];
+        } else {
+          _generateShuffleIndices();
+          return _shuffleIndices.isNotEmpty ? _shuffleIndices[0] : null;
+        }
+    }
+  }
+
+  /// ✅ 获取上一个播放索引（考虑播放模式）
+  int? _getPreviousIndex() {
+    if (_playlist.isEmpty) return null;
+    
+    switch (_repeatMode) {
+      case PlaylistRepeatMode.off:
+      case PlaylistRepeatMode.all:
+      case PlaylistRepeatMode.one:
+        return _currentIndex > 0 ? _currentIndex - 1 : null;
+        
+      case PlaylistRepeatMode.shuffle:
+        if (_shuffleIndices.isEmpty) {
+          _generateShuffleIndices();
+        }
+        
+        final currentShufflePos = _shuffleIndices.indexOf(_currentIndex);
+        if (currentShufflePos > 0) {
+          return _shuffleIndices[currentShufflePos - 1];
+        } else {
+          return null;
+        }
+    }
   }
 
   void removeFromPlaylist(int index) {

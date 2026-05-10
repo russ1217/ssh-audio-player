@@ -69,6 +69,11 @@ class AudioPlayerService extends AudioPlayerServiceBase {
   }
 
   @override
+  Future<void> setUrlWithoutPlay(String url, {bool isVideo = false}) async {
+    debugPrint('⚠️ Linux 平台不支持设置 URL: $url');
+  }
+
+  @override
   Future<void> play() async {
     debugPrint('⚠️ Linux 平台不支持播放');
   }
