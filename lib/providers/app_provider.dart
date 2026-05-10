@@ -597,16 +597,29 @@ class AppProvider extends ChangeNotifier {
       if (success) {
         _activeSSHConfig = config;
         _isSSHConnected = true;
+        
+        // ✅ 关键修复：SSH连接成功后，自动切换到SSH模式
+        if (_isLocalMode) {
+          debugPrint('🔄 SSH连接成功，自动切换到SSH远程模式');
+          _isLocalMode = false;
+        }
+        
         _currentPath = config.initialPath ?? '/';
+        
+        // ✅ 关键修复：先重置loading状态，再加载目录（避免被防重复逻辑拦截）
+        _isLoading = false;
+        notifyListeners();
         await _loadCurrentDirectory();
+      } else {
+        _isLoading = false;
+        notifyListeners();
       }
       return success;
     } catch (e) {
       debugPrint('SSH 连接失败: $e');
-      return false;
-    } finally {
       _isLoading = false;
       notifyListeners();
+      return false;
     }
   }
 

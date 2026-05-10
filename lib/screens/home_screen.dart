@@ -32,6 +32,44 @@ class _HomeScreenState extends State<HomeScreen> {
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // ✅ 新增：在文件浏览器Tab显示当前目录路径
+          if (_currentIndex == 0)
+            Consumer<AppProvider>(
+              builder: (context, provider, child) {
+                // ✅ 关键修复：根据主题模式自动调整颜色
+                final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+                final textColor = isDarkMode ? Colors.grey.shade200 : Colors.grey.shade900;
+                final iconColor = provider.isLocalMode 
+                    ? (isDarkMode ? Colors.blue.shade300 : Colors.blue.shade700)
+                    : (isDarkMode ? Colors.green.shade300 : Colors.green.shade700);
+                
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  color: Theme.of(context).cardColor.withOpacity(0.95),
+                  child: Row(
+                    children: [
+                      Icon(
+                        provider.isLocalMode ? Icons.phone_android : Icons.cloud,
+                        size: 16,
+                        color: iconColor,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          provider.currentPath,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: textColor,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
           const BottomPlayerBar(),
           NavigationBar(
             selectedIndex: _currentIndex,
@@ -203,25 +241,43 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> with WidgetsBindi
       appBar: AppBar(
         title: Consumer<AppProvider>(
           builder: (context, provider, child) {
+            // ✅ 优化：顶部显示SSH连接名称或"本地"
             if (provider.isLocalMode) {
+              return const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.phone_android, size: 20),
+                  SizedBox(width: 8),
+                  Text('本地'),
+                ],
+              );
+            } else {
+              if (!provider.isSSHConnected) {
+                return const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.cloud_off, size: 20),
+                    SizedBox(width: 8),
+                    Text('未连接'),
+                  ],
+                );
+              }
+              // 显示SSH服务器名称（如果有）或地址
+              final sshConfig = provider.sshService.currentConfig;
+              final displayName = sshConfig?.name ?? sshConfig?.host ?? 'SSH';
               return Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.phone_android, size: 20),
+                  const Icon(Icons.cloud, size: 20),
                   const SizedBox(width: 8),
-                  Expanded(
+                  Flexible(
                     child: Text(
-                      provider.currentPath,
+                      displayName,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],
               );
-            } else {
-              if (!provider.isSSHConnected) {
-                return const Text('未连接');
-              }
-              return Text(provider.currentPath);
             }
           },
         ),
@@ -515,7 +571,7 @@ class SettingsScreen extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.info),
             title: const Text('关于'),
-            subtitle: const Text('SSH Player for Russ v1.2.0'),
+            subtitle: const Text('SSH Player for Russ v1.2.3'),
           ),
         ],
       ),
