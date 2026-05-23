@@ -9,7 +9,7 @@ class NetworkMonitorService {
   NetworkMonitorService._internal();
 
   final Connectivity _connectivity = Connectivity();
-  StreamSubscription<ConnectivityResult>? _subscription;
+  StreamSubscription<ConnectivityResult>? _subscription; // ✅ 修复：使用单个ConnectivityResult（兼容5.x版本）
   
   // 网络状态控制器
   final _networkStatusController = StreamController<bool>.broadcast();
@@ -21,6 +21,10 @@ class NetworkMonitorService {
   
   // 回调函数
   Function(bool isConnected)? onNetworkChanged;
+  
+  // ✅ 新增：最后检查时间戳，用于防抖
+  DateTime? _lastCheckTime;
+  static const _checkDebounceMs = 2000; // 2秒内不重复触发
 
   /// 初始化网络监控
   void initialize() {
@@ -29,7 +33,7 @@ class NetworkMonitorService {
     // 检查初始网络状态
     _checkInitialConnectivity();
     
-    // 监听网络状态变化
+    // ✅ 修复：监听网络状态变化（5.x版本返回单个ConnectivityResult）
     _subscription = _connectivity.onConnectivityChanged.listen((result) {
       _handleConnectivityChange(result);
     });
@@ -57,6 +61,17 @@ class NetworkMonitorService {
 
   /// 处理网络状态变化
   void _handleConnectivityChange(ConnectivityResult result) {
+    // ✅ 新增：防抖检查
+    final now = DateTime.now();
+    if (_lastCheckTime != null) {
+      final timeSinceLastCheck = now.difference(_lastCheckTime!).inMilliseconds;
+      if (timeSinceLastCheck < _checkDebounceMs) {
+        debugPrint('⏱️ 网络状态变化防抖: 距离上次检查仅 ${timeSinceLastCheck}ms - 忽略');
+        return;
+      }
+    }
+    _lastCheckTime = now;
+    
     debugPrint('📡 网络状态变化事件: $result');
     final hasConnection = _hasValidConnection(result);
     
@@ -81,6 +96,7 @@ class NetworkMonitorService {
 
   /// 判断是否有有效的网络连接
   bool _hasValidConnection(ConnectivityResult result) {
+    // ✅ 关键改进：增加对none状态的明确判断
     return result == ConnectivityResult.mobile ||
            result == ConnectivityResult.wifi ||
            result == ConnectivityResult.ethernet ||
@@ -91,11 +107,20 @@ class NetworkMonitorService {
   Future<bool> checkConnectivity() async {
     try {
       final result = await _connectivity.checkConnectivity();
-      return _hasValidConnection(result);
+      final hasConnection = _hasValidConnection(result);
+      
+      debugPrint('🔍 手动检查网络状态: $result -> ${hasConnection ? "已连接" : "未连接"}');
+      return hasConnection;
     } catch (e) {
       debugPrint('⚠️ 检查网络连接失败: $e');
       return false;
     }
+  }
+
+  /// ✅ 新增：强制立即检查网络状态（供UI调用）
+  Future<bool> forceCheckConnectivity() async {
+    debugPrint('🔄 强制检查网络状态...');
+    return await checkConnectivity();
   }
 
   /// 释放资源

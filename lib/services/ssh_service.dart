@@ -30,6 +30,7 @@ class SSHService {
   }
 
   void _startHeartbeatTimer(Duration interval) {
+    _heartbeatTimer?.cancel(); // ✅ 修复：先取消旧定时器
     _heartbeatTimer = Timer.periodic(interval, (_) async {
       if (_client != null) {
         final isConnected = await checkConnection();

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
 import '../models/ssh_config.dart';
+import '../services/network_monitor_service.dart';
 import 'package:uuid/uuid.dart';
 
 class SSHConfigScreen extends StatefulWidget {
@@ -13,12 +14,69 @@ class SSHConfigScreen extends StatefulWidget {
 
 class _SSHConfigScreenState extends State<SSHConfigScreen> {
   final _uuid = const Uuid();
+  final NetworkMonitorService _networkMonitor = NetworkMonitorService();
+  bool _isNetworkConnected = true; // ✅ 跟踪网络状态
+
+  @override
+  void initState() {
+    super.initState();
+    // ✅ 初始化时检查网络状态
+    _checkNetworkStatus();
+    
+    // ✅ 监听网络状态变化
+    _networkMonitor.onNetworkChanged = (isConnected) {
+      if (mounted) {
+        setState(() {
+          _isNetworkConnected = isConnected;
+        });
+        
+        if (!isConnected) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('⚠️ 网络已断开，SSH连接可能失败'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ 网络已恢复'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    };
+  }
+  
+  /// ✅ 检查当前网络状态
+  Future<void> _checkNetworkStatus() async {
+    final isConnected = await _networkMonitor.forceCheckConnectivity();
+    if (mounted) {
+      setState(() {
+        _isNetworkConnected = isConnected;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('SSH 服务器配置'),
+        actions: [
+          // ✅ 新增：网络状态指示器
+          IconButton(
+            icon: Icon(
+              _isNetworkConnected ? Icons.wifi : Icons.wifi_off,
+              color: _isNetworkConnected ? Colors.green : Colors.red,
+            ),
+            tooltip: _isNetworkConnected ? '网络已连接' : '网络已断开',
+            onPressed: _checkNetworkStatus,
+          ),
+        ],
       ),
       body: Consumer<AppProvider>(
         builder: (context, provider, child) {
@@ -70,8 +128,15 @@ class _SSHConfigScreenState extends State<SSHConfigScreen> {
                     children: [
                       if (provider.activeSSHConfig?.id != config.id)
                         IconButton(
-                          icon: const Icon(Icons.login),
-                          tooltip: '连接',
+                          icon: Icon(
+                            Icons.login,
+                            // ✅ 关键修复：断网时显示不同颜色提示用户
+                            color: _isNetworkConnected ? null : Colors.orange,
+                          ),
+                          tooltip: _isNetworkConnected 
+                              ? '连接到服务器' 
+                              : '网络已断开，点击尝试重连',
+                          // ✅ 关键修复：始终启用连接按钮，允许用户手动重连
                           onPressed: () => _connectToServer(context, config),
                         ),
                       IconButton(
@@ -100,6 +165,45 @@ class _SSHConfigScreenState extends State<SSHConfigScreen> {
   }
 
   Future<void> _connectToServer(BuildContext context, SSHConfig config) async {
+    // ✅ 关键修复：断网时不阻止连接，而是提示用户网络状态
+    if (!_isNetworkConnected) {
+      final shouldContinue = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('⚠️ 网络未连接'),
+          content: const Text(
+            '当前检测到网络已断开，SSH连接可能会失败。\n\n是否仍要尝试连接？',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('仍要尝试'),
+            ),
+          ],
+        ),
+      );
+      
+      // 用户选择取消
+      if (shouldContinue != true) {
+        return;
+      }
+      
+      // 用户选择继续，显示提示
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('🔄 正在尝试连接...'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+    
     final provider = context.read<AppProvider>();
     
     showDialog(
@@ -108,18 +212,43 @@ class _SSHConfigScreenState extends State<SSHConfigScreen> {
       builder: (context) => const Center(child: CircularProgressIndicator()),
     );
 
-    final success = await provider.connectSSH(config);
-    
-    if (mounted) {
-      Navigator.pop(context);
-      if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('连接成功')),
-        );
+    try {
+      final success = await provider.connectSSH(config);
+      
+      if (mounted) {
         Navigator.pop(context);
-      } else {
+        if (success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ 连接成功'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.pop(context);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(_isNetworkConnected 
+                  ? '❌ 连接失败，请检查配置和网络' 
+                  : '❌ 连接失败，网络可能未恢复'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('连接失败，请检查配置')),
+          SnackBar(
+            content: Text('❌ 连接异常: $e'),
+            backgroundColor: Colors.red,
+            action: SnackBarAction(
+              label: '重试',
+              textColor: Colors.white,
+              onPressed: () => _connectToServer(context, config),
+            ),
+          ),
         );
       }
     }

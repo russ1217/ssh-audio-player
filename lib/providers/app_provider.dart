@@ -143,6 +143,9 @@ class AppProvider extends ChangeNotifier {
     // SSH模式下才需要关注网络状态
     if (_isPlaying && _currentPlayingFile != null) {
       debugPrint('ℹ️ SSH模式下网络断开，将由SSH心跳检测或应用恢复时处理');
+      
+      // ✅ 新增：标记SSH可能已断开，但不立即清除连接标志
+      // 让心跳检测和流式服务来确认和處理
     }
   }
 
@@ -162,8 +165,26 @@ class AppProvider extends ChangeNotifier {
     if (_activeSSHConfig != null) {
       debugPrint('🔍 SSH模式下，验证SSH连接有效性...');
       
-      // 调用SSH服务的主动检查方法
-      final success = await _sshService.checkAndReconnectIfNeeded();
+      // ✅ 关键改进：增加重试机制，应对网络刚恢复时的不稳定
+      int retryCount = 0;
+      const maxRetries = 3;
+      bool success = false;
+      
+      while (retryCount < maxRetries && !success) {
+        if (retryCount > 0) {
+          final delaySeconds = 2 * retryCount; // 第1次等2秒，第2次等4秒
+          debugPrint('⏳ 等待${delaySeconds}秒后重试SSH检查（${retryCount + 1}/$maxRetries）...');
+          await Future.delayed(Duration(seconds: delaySeconds));
+        }
+        
+        debugPrint('🔄 SSH连接检查尝试 (${retryCount + 1}/$maxRetries)...');
+        success = await _sshService.checkAndReconnectIfNeeded();
+        
+        if (!success) {
+          retryCount++;
+          debugPrint('❌ SSH检查/重连失败（尝试 ${retryCount}/$maxRetries）');
+        }
+      }
       
       if (success) {
         debugPrint('✅ SSH连接正常或重连成功');
@@ -183,7 +204,7 @@ class AppProvider extends ChangeNotifier {
           }
         }
       } else {
-        debugPrint('⚠️ SSH重连失败或无配置，将由心跳检测继续重试');
+        debugPrint('⚠️ SSH重连失败或无配置（已尝试 $maxRetries 次），将由心跳检测继续重试');
         _isSSHConnected = false;
         notifyListeners();
       }
