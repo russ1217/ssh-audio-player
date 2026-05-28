@@ -1213,6 +1213,9 @@ class AppProvider extends ChangeNotifier {
   Future<void> togglePlayPause() async {
     try {
       if (_isPlaying) {
+        // ✅ 关键修复：暂停前先保存播放位置（防止长期暂停后断点丢失）
+        await _saveCurrentPlaybackPosition();
+        
         await _audioPlayerService.pause();
         _isPlaying = false;
         // ✅ 关键修复：用户主动暂停，设置标志
@@ -1983,6 +1986,12 @@ class AppProvider extends ChangeNotifier {
 
   /// 获取缓存文件数量
   int get cacheFileCount => _downloadCache.length;
+
+  /// ✅ 公开方法：保存当前播放位置（供main.dart在进入后台时调用）
+  Future<void> savePlaybackPositionBeforeBackground() async {
+    debugPrint('💾 进入后台前保存播放位置...');
+    await _saveCurrentPlaybackPosition();
+  }
 
   /// 保存当前播放位置
   Future<void> _saveCurrentPlaybackPosition() async {

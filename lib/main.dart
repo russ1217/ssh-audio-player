@@ -275,6 +275,16 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     if (state == AppLifecycleState.paused) {
       // 进入后台，显示通知并启动前台服务
       debugPrint('📱 应用进入后台');
+      
+      // ✅ 关键修复：进入后台前保存播放位置（防止长期暂停后断点丢失）
+      if (_globalAppProvider != null) {
+        _globalAppProvider!.savePlaybackPositionBeforeBackground().then((_) {
+          debugPrint('✅ 播放位置已保存');
+        }).catchError((e) {
+          debugPrint('⚠️ 保存播放位置失败: $e');
+        });
+      }
+      
       _notificationService.showRunningNotification();
       
       // 启动前台服务以保持 SSH 连接和网络活动
