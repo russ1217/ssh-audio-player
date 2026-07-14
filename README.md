@@ -44,6 +44,7 @@ A Flutter-based Android audio player application that supports playing audio fil
    - File browser interface
    - Playlist management interface
    - SSH configuration management interface
+   - Full-screen playback mode with landscape orientation and large timer display
 
 7. **Advanced Features**
    - Media notification with playback controls
@@ -52,6 +53,7 @@ A Flutter-based Android audio player application that supports playing audio fil
    - Cache management
    - Battery optimization handling
    - Playback position restoration
+   - Screen wake lock to prevent sleep during playback
 
 ## Tech Stack
 
@@ -64,6 +66,7 @@ A Flutter-based Android audio player application that supports playing audio fil
 - **provider** - State management
 - **path_provider** - System path access
 - **uuid** - Unique ID generation
+- **wakelock_plus** - Prevent screen from sleeping during playback
 
 ## Project Structure
 
@@ -84,7 +87,8 @@ lib/
 ├── screens/                     # Screens
 │   ├── home_screen.dart        # Home and file browser
 │   ├── playlist_screen.dart    # Playlist screen
-│   └── ssh_config_screen.dart  # SSH configuration screen
+│   ├── ssh_config_screen.dart  # SSH configuration screen
+│   └── fullscreen_player_screen.dart  # Full-screen playback mode
 └── widgets/                     # UI components
     ├── file_list_item.dart     # File list item
     └── bottom_player_bar.dart  # Bottom playback control bar
@@ -202,6 +206,31 @@ Contributions are welcome! Please feel free to submit issues and pull requests.
 ## License
 
 This project is open source. See LICENSE file for details.
+
+## Full-Screen Playback Mode 🎉
+
+### Feature Details
+- **Landscape Orientation**: Automatically switches to landscape mode for better viewing experience
+- **Large Timer Display**: 80px font size stopwatch-style timer showing current playback time (MM:SS or HH:MM:SS format)
+- **Progress Bar Control**: Bottom-positioned draggable progress bar for easy navigation
+- **Duration Display**: Shows both current playback time and total duration
+- **Screen Wake Lock**: Uses wakelock_plus to keep the screen on, preventing the device from locking during playback
+- **Immersive Experience**: Hides status bar and navigation bar for true full-screen experience
+- **Basic Controls**: Provides 10-second rewind, play/pause, and 10-second fast forward buttons
+
+### Usage
+1. In the bottom playback control bar, click the **Full-Screen button** (⛶)
+2. In full-screen mode, you can:
+   - View the large timer display
+   - Drag the progress bar to adjust playback position
+   - Use control buttons for playback control
+3. Click the **Exit Full-Screen** button at the bottom to return to normal mode
+
+### Technical Implementation
+- Uses `wakelock_plus` package to prevent screen locking
+- Uses `SystemChrome.setPreferredOrientations` to force landscape orientation
+- Uses `SystemChrome.setEnabledSystemUIMode` for immersive full-screen
+- Listens to app lifecycle events to maintain full-screen state when returning from background
 
 ## Author
 

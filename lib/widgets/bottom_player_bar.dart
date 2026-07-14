@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
 import '../services/timer_service.dart';
 import '../models/playlist_repeat_mode.dart';
+import '../screens/fullscreen_player_screen.dart';
 
 class BottomPlayerBar extends StatelessWidget {
   const BottomPlayerBar({super.key});
@@ -69,61 +70,89 @@ class BottomPlayerBar extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 4),
-              // 播放控制按钮
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              // 播放控制按钮 - 分为两行显示以容纳更多按钮
+              Column(
                 children: [
-                  // ✅ 播放模式切换按钮（移到最左边）
-                  IconButton(
-                    icon: Icon(_getRepeatModeIcon(provider.repeatMode)),
-                    onPressed: () => provider.toggleRepeatMode(),
-                    tooltip: _getRepeatModeTooltip(provider.repeatMode),
-                    color: _getRepeatModeColor(provider.repeatMode),
+                  // 第一行：主要控制按钮
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      // 上一曲
+                      IconButton(
+                        icon: const Icon(Icons.skip_previous),
+                        onPressed: provider.currentIndex > 0
+                            ? () => provider.playPreviousInPlaylist()
+                            : null,
+                        tooltip: '上一曲',
+                      ),
+                      // 快退
+                      IconButton(
+                        icon: const Icon(Icons.replay_10),
+                        onPressed: () => provider.seekBackward(const Duration(seconds: 10)),
+                        tooltip: '快退10秒',
+                      ),
+                      // 播放/暂停
+                      FloatingActionButton(
+                        onPressed: () => provider.togglePlayPause(),
+                        mini: true,
+                        child: Icon(
+                          provider.isPlaying ? Icons.pause : Icons.play_arrow,
+                        ),
+                      ),
+                      // 快进
+                      IconButton(
+                        icon: const Icon(Icons.forward_10),
+                        onPressed: () => provider.seekForward(const Duration(seconds: 10)),
+                        tooltip: '快进10秒',
+                      ),
+                      // 下一曲
+                      IconButton(
+                        icon: const Icon(Icons.skip_next),
+                        onPressed: provider.currentIndex < provider.playlist.length - 1 || 
+                                   provider.repeatMode == PlaylistRepeatMode.all ||
+                                   provider.repeatMode == PlaylistRepeatMode.one ||
+                                   provider.repeatMode == PlaylistRepeatMode.shuffle
+                            ? () => provider.playNextInPlaylist()
+                            : null,
+                        tooltip: '下一曲',
+                      ),
+                    ],
                   ),
-                  // 上一曲
-                  IconButton(
-                    icon: const Icon(Icons.skip_previous),
-                    onPressed: provider.currentIndex > 0
-                        ? () => provider.playPreviousInPlaylist()
-                        : null,
-                    tooltip: '上一曲',
-                  ),
-                  // 快退
-                  IconButton(
-                    icon: const Icon(Icons.replay_10),
-                    onPressed: () => provider.seekBackward(const Duration(seconds: 10)),
-                    tooltip: '快退10秒',
-                  ),
-                  // 播放/暂停
-                  FloatingActionButton(
-                    onPressed: () => provider.togglePlayPause(),
-                    mini: true,
-                    child: Icon(
-                      provider.isPlaying ? Icons.pause : Icons.play_arrow,
-                    ),
-                  ),
-                  // 快进
-                  IconButton(
-                    icon: const Icon(Icons.forward_10),
-                    onPressed: () => provider.seekForward(const Duration(seconds: 10)),
-                    tooltip: '快进10秒',
-                  ),
-                  // 下一曲
-                  IconButton(
-                    icon: const Icon(Icons.skip_next),
-                    onPressed: provider.currentIndex < provider.playlist.length - 1 || 
-                               provider.repeatMode == PlaylistRepeatMode.all ||
-                               provider.repeatMode == PlaylistRepeatMode.one ||
-                               provider.repeatMode == PlaylistRepeatMode.shuffle
-                        ? () => provider.playNextInPlaylist()
-                        : null,
-                    tooltip: '下一曲',
-                  ),
-                  // 停止
-                  IconButton(
-                    icon: const Icon(Icons.stop),
-                    onPressed: () => provider.stopPlayback(),
-                    tooltip: '停止',
+                  
+                  // 第二行：辅助控制按钮
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      // ✅ 播放模式切换按钮
+                      IconButton(
+                        icon: Icon(_getRepeatModeIcon(provider.repeatMode)),
+                        onPressed: () => provider.toggleRepeatMode(),
+                        tooltip: _getRepeatModeTooltip(provider.repeatMode),
+                        color: _getRepeatModeColor(provider.repeatMode),
+                        iconSize: 20,
+                      ),
+                      // 停止
+                      IconButton(
+                        icon: const Icon(Icons.stop),
+                        onPressed: () => provider.stopPlayback(),
+                        tooltip: '停止',
+                        iconSize: 20,
+                      ),
+                      // ✅ 全屏播放按钮（突出显示）
+                      IconButton(
+                        icon: const Icon(Icons.fullscreen),
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => const FullscreenPlayerScreen(),
+                            ),
+                          );
+                        },
+                        tooltip: '全屏播放',
+                        iconSize: 28,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ],
                   ),
                 ],
               ),

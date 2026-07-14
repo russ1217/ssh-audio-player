@@ -2,7 +2,7 @@ name: ssh_audio_player
 description: A SSH audio player application
 publish_to: 'none'
 
-version: 1.2.4+1
+version: 1.2.5+1
 
 environment:
   sdk: '>=3.2.0 <4.0.0'
@@ -43,6 +43,9 @@ dependencies:
   
   # 网络连接检测
   connectivity_plus: ^5.0.2
+  
+  # 保持屏幕常亮
+  wakelock_plus: ^1.2.8
 
 dev_dependencies:
   flutter_test:
